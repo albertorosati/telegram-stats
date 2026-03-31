@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState } from 'react';
 import { LayoutDashboard, MessageSquare, Sticker, Swords, TrendingUp } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -33,6 +32,10 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
   const [activeTab, setActiveTab] = useState<WrappedTab>('summary');
   const headlineStats = useMemo(() => buildHeadlineStats(data), [data]);
   const insightCards = useMemo(() => buildInsightCards(data), [data]);
+  const exportContainerRef = useRef<HTMLDivElement>(null);
+
+  // Callback passed to ExportButton — returns the hidden export container
+  const getExportContainer = useCallback(() => exportContainerRef.current, []);
 
   function renderTabContent() {
     if (activeTab === 'summary') {
@@ -88,7 +91,7 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
             })}
           </div>
           <div className='wrapped-action-row'>
-            <ExportButton data={data} />
+            <ExportButton data={data} getExportContainer={getExportContainer} />
           </div>
         </section>
 
@@ -104,6 +107,53 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
             {renderTabContent()}
           </motion.div>
         </AnimatePresence>
+      </div>
+
+      {/* ── Hidden export snapshot: all tabs rendered simultaneously ── */}
+      <div
+        ref={exportContainerRef}
+        aria-hidden='true'
+        style={{ position: 'fixed', left: '-200vw', top: 0, width: '1200px', pointerEvents: 'none', opacity: 0 }}
+      >
+        <div className='wrapped-shell'>
+          <div className='wrapped-page wrapped-stack'>
+            <section className='wrapped-tab-nav'>
+              <div className='wrapped-tab-bar'>
+                {TABS.map((tab, i) => (
+                  <button
+                    className={`wrapped-tab-btn${i === 0 ? ' is-active' : ''}`}
+                    data-tab={tab.id}
+                    key={tab.id}
+                    type='button'
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <div className='wrapped-tab-content'>
+              <div data-export-tab='summary'>
+                <HeroSection data={data} />
+                <OverviewSection headlineStats={headlineStats} insightCards={insightCards} />
+                <MediaChaosSection data={data} />
+              </div>
+              <div data-export-tab='challenges'>
+                <AwardsSection data={data} />
+              </div>
+              <div data-export-tab='timeline'>
+                <ChartsSection data={data} />
+                <TimelineSection data={data} />
+              </div>
+              <div data-export-tab='language'>
+                <CultureSection data={data} />
+              </div>
+              <div data-export-tab='stickers'>
+                <StickerSection data={data} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

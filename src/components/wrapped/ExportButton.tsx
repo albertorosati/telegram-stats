@@ -7,9 +7,10 @@ import { exportToSingleHTML, getWrappedExportFileName } from '../../lib/exporter
 
 interface ExportButtonProps {
   data: WrappedData;
+  getExportContainer: () => HTMLElement | null;
 }
 
-export function ExportButton({ data }: ExportButtonProps) {
+export function ExportButton({ data, getExportContainer }: ExportButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [progressLabel, setProgressLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,10 @@ export function ExportButton({ data }: ExportButtonProps) {
     setProgressLabel('Avvio esportazione…');
 
     try {
-      const html = await exportToSingleHTML(data, (label, _pct) => {
+      const container = getExportContainer();
+      if (!container) throw new Error('Export container non trovato.');
+
+      const html = await exportToSingleHTML(data, container, (label) => {
         setProgressLabel(label);
       });
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });

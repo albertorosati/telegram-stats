@@ -1281,13 +1281,11 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
-  // Try the tracked blob registry first (more reliable)
   const { getTrackedBlob } = await import('./analytics/parser');
   const tracked = getTrackedBlob(blobUrl);
   if (tracked) {
     return blobToBase64(tracked);
   }
-  // Fallback to fetch
   try {
     const response = await fetch(blobUrl);
     const blob = await response.blob();
@@ -1298,449 +1296,248 @@ async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// HTML / MEDIA HELPERS
+// DOM-CAPTURE EXPORT — captures the live React DOM, inlines all assets,
+// wraps in a standalone HTML shell. Single source of truth = zero drift.
 // ---------------------------------------------------------------------------
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function numFmt(n: number): string {
-  return n.toLocaleString('it-IT');
-}
-
-function dateFmt(d: Date | string | null | undefined): string {
-  if (!d) return 'N/D';
-  return new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(d));
-}
-
-function mediaTag(
-  url: string | undefined,
-  blobMap: Map<string, string>,
-  isAnimated = false,
-  cssClass = '',
-): string {
-  if (!url) {
-    return `<div class="wrapped-media-frame ${cssClass}"><span class="wrapped-footnote">–</span></div>`;
-  }
-  const resolved = (url.startsWith('blob:') ? blobMap.get(url) : url) ?? url;
-  const isVideo = isAnimated || resolved.startsWith('data:video');
-  if (isVideo) {
-    return `<div class="wrapped-media-frame ${cssClass}"><video src="${resolved}" autoplay loop muted playsinline></video></div>`;
-  }
-  return `<div class="wrapped-media-frame ${cssClass}"><img src="${resolved}" alt="sticker"></div>`;
-}
-
-// ---------------------------------------------------------------------------
-// SECTION BUILDERS
-// ---------------------------------------------------------------------------
-
-function buildHeroSection(data: WrappedData): string {
-  const [u1, u2] = data.users;
-  const activeDays = Math.max(data.global.dailyVolume.length, 1);
-  const ed = u1.positivity + u2.positivity - u1.negativity - u2.negativity;
-  return `
-  <section class="wrapped-panel wrapped-hero anim-fade-up">
-    <div class="wrapped-hero-grid">
-      <div>
-        <p class="wrapped-kicker">Il recap della chat</p>
-        <h1 class="wrapped-title">
-          <span class="wrapped-title-user-a">${escapeHtml(u1.name)}</span>
-          <span class="wrapped-title-plus"> + </span>
-          <span class="wrapped-title-user-b">${escapeHtml(u2.name)}</span><br>Wrapped
-        </h1>
-        <p class="wrapped-subtitle">Questa chat è un piccolo universo fatto di testo, sticker, audio, caos e rituali notturni.</p>
-      </div>
-      <div class="wrapped-hero-side">
-        <div class="wrapped-mini-card wrapped-mini-card-accent"><p class="wrapped-mini-label">🔥 Giorni attivi</p><p class="wrapped-mini-value">${numFmt(activeDays)}</p></div>
-        <div class="wrapped-mini-card"><p class="wrapped-mini-label">💬 Messaggi totali</p><p class="wrapped-mini-value">${numFmt(data.global.totalMessages)}</p><p class="wrapped-mini-detail">${numFmt(data.stickers.total)} sticker · ${numFmt(data.global.totalLoveWords)} parole ad alta intensità</p></div>
-        <div class="wrapped-mini-card wrapped-mini-card-secondary"><p class="wrapped-mini-label">⚡ Pressione emotiva</p><p class="wrapped-mini-value">${ed >= 0 ? '+' : ''}${numFmt(ed)}</p></div>
-      </div>
-    </div>
-  </section>`;
-}
-
-function buildOverviewSection(data: WrappedData): string {
-  const activeDays = Math.max(data.global.dailyVolume.length, 1);
-  const msgPerDay = (data.global.totalMessages / activeDays).toFixed(1);
-  const stickerDensity = data.global.totalMessages === 0 ? '0' : ((data.stickers.total / data.global.totalMessages) * 100).toFixed(1);
-  const totalPos = data.users.reduce((s, u) => s + u.positivity, 0);
-  const totalNeg = data.users.reduce((s, u) => s + u.negativity, 0);
-  const fastest = [...data.users].filter(u => u.avgResponseTime > 0).sort((a, b) => a.avgResponseTime - b.avgResponseTime)[0] ?? data.users[0];
-
-  const cards = [
-    { emoji: '⌨️', label: 'Media messaggi al giorno', value: msgPerDay, detail: `${numFmt(activeDays)} giorni attivi` },
-    { emoji: '🍌', label: 'Densità sticker', value: `${stickerDensity}%`, detail: 'sticker ogni 100 messaggi' },
-    { emoji: '⚡', label: 'Saldo emotivo', value: `${totalPos - totalNeg >= 0 ? '+' : ''}${numFmt(totalPos - totalNeg)}`, detail: `${numFmt(totalPos)} pos vs ${numFmt(totalNeg)} neg` },
-    { emoji: '💨', label: 'Risposta lampo', value: fastest.avgResponseTimeLabel, detail: `${escapeHtml(fastest.name)} è il più rapido` },
-  ];
-
-  return `
-  <section class="wrapped-panel wrapped-scene anim-fade-up">
-    <div class="wrapped-panel-inner">
-      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">I grandi numeri</span><h2 class="wrapped-section-title">I grandi numeri</h2></div></div>
-      <div class="wrapped-highlight-list">
-        ${cards.map((c, i) => `
-          <article class="wrapped-bento-stat anim-fade-up" style="animation-delay:${i * 0.06}s">
-            <div class="wrapped-bento-head"><span class="wrapped-bento-emoji">${c.emoji}</span></div>
-            <p class="wrapped-metric-label">${escapeHtml(c.label)}</p>
-            <p class="wrapped-metric-value">${c.value}</p>
-            <p class="wrapped-metric-detail">${c.detail}</p>
-          </article>
-        `).join('')}
-      </div>
-    </div>
-  </section>`;
-}
-
-function buildAwardsSection(data: WrappedData): string {
-  if (!data.global.awards?.length) return '';
-  return `
-  <section class="wrapped-panel wrapped-scene anim-fade-up">
-    <div class="wrapped-panel-inner">
-      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Le sfide</span><h2 class="wrapped-section-title">Le sfide</h2></div></div>
-      <div class="wrapped-versus-list">
-        ${data.global.awards.map((a, i) => {
-          const base = Math.max(a.winnerScore, a.loserScore, 1);
-          return `
-          <article class="wrapped-versus-card anim-fade-up" style="animation-delay:${i * 0.05}s">
-            <div class="wrapped-versus-head"><div class="wrapped-versus-title-block"><span class="wrapped-versus-emoji">${a.emoji}</span></div><div><h3 style="margin:0;font-size:1rem;font-weight:700">${escapeHtml(a.title)}</h3><p class="wrapped-metric-detail">${escapeHtml(a.description)}</p></div></div>
-            <div class="wrapped-versus-body">
-              <div class="wrapped-versus-row"><div class="wrapped-versus-row-head"><p class="wrapped-versus-name">${escapeHtml(a.winnerName)}</p><span class="wrapped-award-mega">${a.winnerValue}</span></div><div class="wrapped-versus-track"><div class="wrapped-versus-fill wrapped-versus-fill-winner" style="width:${(a.winnerScore / base * 100).toFixed(1)}%"></div></div></div>
-              <div class="wrapped-versus-row"><div class="wrapped-versus-row-head"><p class="wrapped-versus-name">${escapeHtml(a.loserName)}</p><span class="wrapped-versus-secondary-score">${a.loserValue}</span></div><div class="wrapped-versus-track"><div class="wrapped-versus-fill wrapped-versus-fill-loser" style="width:${(a.loserScore / base * 100).toFixed(1)}%"></div></div></div>
-            </div>
-          </article>`;
-        }).join('')}
-      </div>
-    </div>
-  </section>`;
-}
-
-function buildUsersSection(data: WrappedData): string {
-  const colors = ['#b4ff00', '#bd00ff'];
-  return `
-  <section class="wrapped-panel wrapped-scene anim-fade-up">
-    <div class="wrapped-panel-inner">
-      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Ritratti</span><h2 class="wrapped-section-title">Due profili, due manie</h2></div></div>
-      <div class="wrapped-users">
-        ${data.users.map((u, i) => {
-          const c = colors[i];
-          const bal = u.positivity - u.negativity;
-          return `
-          <article class="wrapped-user-card anim-fade-up" style="border-color:${c}33;animation-delay:${i * 0.1}s">
-            <div class="wrapped-user-head"><div><h3 class="wrapped-user-name">${escapeHtml(u.name)}</h3><p class="wrapped-subtitle" style="margin-top:8px">${numFmt(u.wordCount)} parole, ${numFmt(u.vocabularySize)} termini unici, ${u.lexicalRichness}% ricchezza lessicale.</p></div></div>
-            <div class="wrapped-user-metrics">
-              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Messaggi</span><span class="wrapped-stat-value">${numFmt(u.msgCount)}</span><span class="wrapped-stat-subvalue">${u.avgWordsPerMsg} parole/msg</span></div>
-              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Bilancio emotivo</span><span class="wrapped-stat-value">${bal >= 0 ? '+' : ''}${numFmt(bal)}</span><span class="wrapped-stat-subvalue">${u.positivity} pos · ${u.negativity} neg</span></div>
-            </div>
-            <div class="wrapped-user-media">
-              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Foto</span><span class="wrapped-stat-value">${numFmt(u.imagesSent)}</span></div>
-              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Vocali</span><span class="wrapped-stat-value">${numFmt(u.voiceNotes)}</span></div>
-              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Iniziative</span><span class="wrapped-stat-value">${numFmt(u.initiations)}</span><span class="wrapped-stat-subvalue">${u.doubleTexts} rincorse</span></div>
-            </div>
-            <div><p class="wrapped-metric-label">Top parole</p><div class="wrapped-pill-row">${u.topWords.slice(0, 8).map(w => `<span class="wrapped-pill">${escapeHtml(w.word)} <strong>${w.count}</strong></span>`).join('')}</div></div>
-            <div><p class="wrapped-metric-label">Top emoji</p><div class="wrapped-pill-row">${u.topEmojis.length ? u.topEmojis.slice(0, 6).map(e => `<span class="wrapped-pill">${e.emoji} <strong>${e.count}</strong></span>`).join('') : '<span class="wrapped-footnote">Nessuna</span>'}</div></div>
-          </article>`;
-        }).join('')}
-      </div>
-    </div>
-  </section>`;
-}
-
-function buildWordCloudSection(data: WrappedData): string {
-  if (!data.global.topWords?.length) return '';
-  return `
-  <section class="wrapped-panel wrapped-scene anim-fade-up">
-    <div class="wrapped-panel-inner">
-      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Il linguaggio</span><h2 class="wrapped-section-title">La nuvola delle parole</h2></div></div>
-      <div class="wrapped-word-cloud">
-        ${data.global.topWords.slice(0, 50).map(w => {
-          const size = 1 + w.relativeSize * 4.8;
-          const hue = Math.floor(Math.random() * 60 + 70);
-          return `<span class="wrapped-word" style="font-size:${size}rem;color:hsl(${hue},80%,65%)">${escapeHtml(w.word)}</span>`;
-        }).join(' ')}
-      </div>
-    </div>
-  </section>`;
-}
-
-function buildStickerSections(data: WrappedData, blobMap: Map<string, string>): string {
-  const stickers = data.stickers;
-  if (stickers.total === 0) return '<section class="wrapped-panel wrapped-scene"><div class="wrapped-panel-inner"><p class="wrapped-footnote">Nessun sticker trovato.</p></div></section>';
-
-  const density = data.global.totalMessages > 0 ? ((stickers.total / data.global.totalMessages) * 100).toFixed(1) : '0';
-  const [u1, u2] = data.users;
-  const userColors = ['#b4ff00', '#bd00ff'];
-
-  // ── Hero ──
-  let html = `
-  <section class="wrapped-panel wrapped-scene sticker-hero-section anim-fade-up">
-    ${stickers.mosaicUrls.length > 0 ? `
-    <div class="sticker-hero-mosaic-bg" aria-hidden="true"><div class="sticker-hero-mosaic-track">
-      ${stickers.mosaicUrls.slice(0, 30).map(url => `<div class="sticker-hero-mosaic-item">${mediaTag(url, blobMap)}</div>`).join('')}
-      ${stickers.mosaicUrls.slice(0, 30).map(url => `<div class="sticker-hero-mosaic-item">${mediaTag(url, blobMap)}</div>`).join('')}
-    </div></div>` : ''}
-    <div class="wrapped-panel-inner sticker-hero-content">
-      <div class="sticker-hero-headline"><p class="wrapped-kicker">La galassia degli sticker</p>
-        <h2 class="sticker-hero-title"><span class="sticker-hero-number">${numFmt(stickers.total)}</span><span class="sticker-hero-label">sticker inviati</span></h2>
-      </div>
-      <div class="sticker-hero-stats">
-        <div class="sticker-hero-pill anim-fade-up"><span class="sticker-hero-pill-icon">🎨</span><span class="sticker-hero-pill-value">${numFmt(stickers.uniqueCount)}</span><span class="sticker-hero-pill-label">unici</span></div>
-        <div class="sticker-hero-pill anim-fade-up" style="animation-delay:.06s"><span class="sticker-hero-pill-icon">🎬</span><span class="sticker-hero-pill-value">${numFmt(stickers.animatedCount)}</span><span class="sticker-hero-pill-label">animati</span></div>
-        <div class="sticker-hero-pill anim-fade-up" style="animation-delay:.12s"><span class="sticker-hero-pill-icon">🖼️</span><span class="sticker-hero-pill-value">${numFmt(stickers.staticCount)}</span><span class="sticker-hero-pill-label">statici</span></div>
-        <div class="sticker-hero-pill anim-fade-up" style="animation-delay:.18s"><span class="sticker-hero-pill-icon">⚡</span><span class="sticker-hero-pill-value">${density}%</span><span class="sticker-hero-pill-label">densità</span></div>
-      </div>
-      <div class="sticker-hero-anchors">
-        <div class="sticker-anchor anim-fade-up"><div class="sticker-anchor-badge">🏁 Primo</div><div class="sticker-anchor-media">${mediaTag(stickers.firstSticker?.blobUrl, blobMap, stickers.firstSticker?.isAnimated)}</div><p class="sticker-anchor-meta">${stickers.firstSticker ? `${escapeHtml(stickers.firstSticker.userName)} · ${dateFmt(stickers.firstSticker.date)}` : 'N/D'}</p></div>
-        <div class="sticker-anchor anim-fade-up" style="animation-delay:.08s"><div class="sticker-anchor-badge">🔚 Ultimo</div><div class="sticker-anchor-media">${mediaTag(stickers.lastSticker?.blobUrl, blobMap, stickers.lastSticker?.isAnimated)}</div><p class="sticker-anchor-meta">${stickers.lastSticker ? `${escapeHtml(stickers.lastSticker.userName)} · ${dateFmt(stickers.lastSticker.date)}` : 'N/D'}</p></div>
-      </div>
-    </div>
-  </section>`;
-
-  // ── Holy Trinity ──
-  if (stickers.holyTrinity.length > 0) {
-    const order = [1, 0, 2];
-    html += `
-    <section class="wrapped-panel wrapped-scene anim-fade-up">
-      <div class="wrapped-panel-inner">
-        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">La santa trinità</span><h2 class="wrapped-section-title">I 3 sticker più usati in assoluto</h2></div></div>
-        <div class="sticker-podium">
-          ${order.map(rank => {
-            const s = stickers.holyTrinity[rank];
-            if (!s) return '';
-            const cls = rank === 0 ? 'sticker-podium-gold' : rank === 1 ? 'sticker-podium-silver' : 'sticker-podium-bronze';
-            return `
-            <div class="sticker-podium-card ${cls} anim-fade-up" style="animation-delay:${rank * 0.08}s">
-              ${rank === 0 ? '<div class="sticker-podium-crown">👑</div>' : ''}
-              <div class="sticker-podium-medal">#${rank + 1}</div>
-              <div class="sticker-podium-media">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}</div>
-              <span class="sticker-podium-count">${numFmt(s.count)}x</span>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-    </section>`;
-  }
-
-  // ── Battle ──
-  const entries = [stickers.byUser[u1.name], stickers.byUser[u2.name]].map((e, i) => e ?? { userName: data.users[i].name, count: 0, animatedCount: 0, uniqueCount: 0, podium: [], onesies: [], radarStats: [0, 0, 0, 0, 0] as [number, number, number, number, number] });
-  const winnerIdx = entries[0].count >= entries[1].count ? 0 : 1;
-
-  html += `
-  <section class="wrapped-panel wrapped-scene sticker-battle-section anim-fade-up">
-    <div class="wrapped-panel-inner">
-      <div class="sticker-battle-header"><div class="wrapped-section-head" style="text-align:center"><div><span class="wrapped-section-kicker">La battaglia degli sticker</span><h2 class="wrapped-section-title">La battaglia degli sticker</h2></div></div></div>
-      <div class="sticker-vs-container">
-        <div class="sticker-vs-badge">⚡<span>VS</span></div>
-        <div class="wrapped-sticker-battle-grid">
-          ${entries.map((entry, idx) => {
-            const animPct = entry.count === 0 ? 0 : Math.round((entry.animatedCount / entry.count) * 100);
-            const isWinner = idx === winnerIdx;
-            const color = userColors[idx];
-            return `
-            <article class="wrapped-sticker-user-card ${isWinner ? 'sticker-card-winner' : ''} anim-fade-up" style="--sticker-accent:${color};animation-delay:${idx * 0.12}s">
-              ${isWinner ? '<div class="sticker-winner-tag">🏆 Vincitore</div>' : ''}
-              <h3 class="wrapped-user-name"><span class="sticker-user-dot" style="background:${color}"></span>${escapeHtml(entry.userName)}</h3>
-              <div class="sticker-big-number"><span class="sticker-big-count">${numFmt(entry.count)}</span><span class="sticker-big-suffix">sticker</span></div>
-              <div class="wrapped-sticker-user-kpis">
-                <div class="wrapped-stat-box"><span class="wrapped-stat-label">Unici</span><span class="wrapped-stat-value">${numFmt(entry.uniqueCount)}</span></div>
-                <div class="wrapped-stat-box"><span class="wrapped-stat-label">Animati</span><span class="wrapped-stat-value">${animPct}%</span></div>
-              </div>
-              <div class="wrapped-sticker-top-grid">
-                ${entry.podium.slice(0, 3).map((s, r) => `
-                  <div class="wrapped-sticker-top-card">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}<p class="wrapped-metric-label">#${r + 1}</p><p class="wrapped-sticker-top-count">${numFmt(s.count)}x</p></div>
-                `).join('') || '<p class="wrapped-footnote">Nessuno sticker.</p>'}
-              </div>
-            </article>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>
-  </section>`;
-
-  // ── Graveyard ──
-  const allOnesies = entries.flatMap(e => e.onesies);
-  if (allOnesies.length > 0) {
-    html += `
-    <section class="wrapped-panel wrapped-scene sticker-graveyard-section anim-fade-up">
-      <div class="wrapped-panel-inner">
-        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Il cimitero degli sticker</span><h2 class="wrapped-section-title">I Dimenticati</h2><p class="wrapped-section-description">Usati una sola volta e mai più.</p></div></div>
-        <div class="sticker-graveyard-grid">
-          ${allOnesies.map(s => `<div class="sticker-graveyard-cell">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}</div>`).join('')}
-        </div>
-        <p class="sticker-graveyard-epitaph">👻 Qui giacciono ${allOnesies.length} sticker dimenticati dal tempo</p>
-      </div>
-    </section>`;
-  }
-
-  // ── Museum ──
-  if (stickers.museumEntries.length > 0) {
-    html += `
-    <section class="wrapped-panel wrapped-scene anim-fade-up">
-      <div class="wrapped-panel-inner">
-        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Il museo degli sticker</span><h2 class="wrapped-section-title">Il museo degli sticker</h2></div></div>
-        <div class="wrapped-sticker-museum-grid">
-          ${stickers.museumEntries.map(s => `<div class="wrapped-sticker-museum-card">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}<span class="wrapped-sticker-museum-count">${numFmt(s.count)}x</span></div>`).join('')}
-        </div>
-      </div>
-    </section>`;
-  }
-
-  // ── Mosaic ──
-  if (stickers.mosaicUrls.length > 0) {
-    html += `
-    <section class="wrapped-panel wrapped-scene sticker-mosaic-section anim-fade-up">
-      <div class="wrapped-panel-inner">
-        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Mosaico sticker</span><h2 class="wrapped-section-title">La parete degli sticker</h2></div></div>
-        <div class="sticker-mosaic-scroll"><div class="sticker-mosaic-track">
-          ${stickers.mosaicUrls.map(url => `<div class="sticker-mosaic-cell">${mediaTag(url, blobMap)}</div>`).join('')}
-        </div></div>
-      </div>
-    </section>`;
-  }
-
-  return html;
-}
-
-// ---------------------------------------------------------------------------
-// STANDALONE HTML EXPORT — Self-contained interactive single file
-// ---------------------------------------------------------------------------
-
+/**
+ * Captures every rendered tab panel from the live React dashboard,
+ * replaces blob: URLs with inlined data URIs, and produces a fully
+ * self-contained HTML file that is visually identical to the live app.
+ *
+ * The React components remain the single source of truth — we never
+ * duplicate layout / section builders.
+ */
 export async function exportToSingleHTML(
   data: WrappedData,
+  sourceContainer: HTMLElement,
   onProgress?: (label: string, percent: number) => void,
 ): Promise<string> {
   const report = (label: string, pct: number) => onProgress?.(label, pct);
+  report('Preparazione snapshot…', 2);
 
-  // ── Collect all blob URLs ──
+  // ── 1. Clone the export container so we can mutate freely ──
+  //    The container is the hidden off-screen div that has ALL tabs rendered.
+  //    We grab the inner .wrapped-shell to strip the positioning wrapper.
+  const rawClone = sourceContainer.cloneNode(true) as HTMLElement;
+  const clone = rawClone.querySelector('.wrapped-shell') as HTMLElement;
+  if (!clone) throw new Error('Dashboard non trovato nel container di esportazione.');
+
+  // ── 3. Remove elements that don't belong in the export ──
+  clone.querySelectorAll('.wrapped-action-row, .wrapped-export-button, button[class*="export"]')
+    .forEach(el => el.remove());
+  // Remove inline <style> — the CSS is injected in the <head> of the export.
+  clone.querySelectorAll('style').forEach(el => el.remove());
+
+  // ── 4. Collect all unique blob: URLs from media elements ──
   report('Raccolta media…', 5);
-  const blobUrls = new Set<string>();
-  const collect = (url: string | undefined) => {
-    if (url?.startsWith('blob:')) blobUrls.add(url);
-  };
+  const blobSrcs = new Set<string>();
+  clone.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img[src^="blob:"], video[src^="blob:"]')
+    .forEach(el => blobSrcs.add(el.src));
 
-  if (data.stickers.firstSticker) collect(data.stickers.firstSticker.blobUrl);
-  if (data.stickers.lastSticker) collect(data.stickers.lastSticker.blobUrl);
-  data.stickers.holyTrinity.forEach(s => collect(s.blobUrl));
-  data.stickers.museumEntries.forEach(s => collect(s.blobUrl));
-  data.stickers.mosaicUrls.forEach(url => collect(url));
-  for (const userStats of Object.values(data.stickers.byUser)) {
-    userStats.podium.forEach(s => collect(s.blobUrl));
-    userStats.onesies.forEach(s => collect(s.blobUrl));
-  }
-  data.global.stickerTimeline.forEach(e => collect(e.topStickerBlobUrl));
-  data.global.monthlyJourney.forEach(e => collect(e.stickerBlobUrl));
-
-  // ── Convert blob → data URIs ──
-  report('Conversione media in data URI…', 10);
+  // ── 5. Convert blob → data URI in batches ──
   const blobMap = new Map<string, string>();
-  const urlList = [...blobUrls];
+  const urlList = [...blobSrcs];
   const batchSize = 10;
   for (let i = 0; i < urlList.length; i += batchSize) {
     const batch = urlList.slice(i, i + batchSize);
     const results = await Promise.all(batch.map(url => blobUrlToDataUrl(url)));
     batch.forEach((url, idx) => { if (results[idx]) blobMap.set(url, results[idx]); });
-    const pct = 10 + Math.floor((i / urlList.length) * 60);
-    report(`Conversione media… (${Math.min(i + batchSize, urlList.length)}/${urlList.length})`, pct);
+    const done = Math.min(i + batchSize, urlList.length);
+    report(`Conversione media… (${done}/${urlList.length})`, 5 + Math.floor((done / urlList.length) * 65));
   }
 
-  // ── Build sections ──
-  report('Costruzione pagina…', 75);
+  // ── 6. Replace blob: src with data URIs in the cloned DOM ──
+  report('Sostituzione URL media…', 72);
+  clone.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img[src^="blob:"], video[src^="blob:"]')
+    .forEach(el => {
+      const dataUri = blobMap.get(el.src);
+      if (dataUri) el.src = dataUri;
+    });
 
-  const tabs = [
-    { id: 'summary', label: '📊 Riassunto', content: buildHeroSection(data) + buildOverviewSection(data) },
-    { id: 'challenges', label: '⚔️ Le Sfide', content: buildAwardsSection(data) },
-    { id: 'profiles', label: '👤 I Profili', content: buildUsersSection(data) },
-    { id: 'language', label: '💬 Linguaggio', content: buildWordCloudSection(data) },
-    { id: 'stickers', label: '🎭 Stickers', content: buildStickerSections(data, blobMap) },
-  ];
+  // ── 7. Normalise Framer Motion artefacts ──
+  //    Framer sets inline `opacity`, `transform`, `will-change` etc.
+  //    on animated elements. For the export we "freeze" the final
+  //    visible state and let CSS handle scroll-reveal animations.
+  report('Pulizia DOM…', 76);
+  clone.querySelectorAll<HTMLElement>('[style]').forEach(el => {
+    // Keep only intentional inline styles (CSS custom props, explicit widths, etc.)
+    const keep: string[] = [];
+    for (let i = 0; i < el.style.length; i++) {
+      const prop = el.style[i];
+      // Preserve CSS custom properties and explicit layout/presentation styles
+      if (
+        prop.startsWith('--') ||
+        prop === 'width' ||
+        prop === 'height' ||
+        prop === 'border-color' ||
+        prop === 'background' ||
+        prop === 'color' ||
+        prop === 'font-size' ||
+        prop === 'grid-template-columns' ||
+        prop === 'animation-delay'
+      ) {
+        keep.push(`${prop}:${el.style.getPropertyValue(prop)}`);
+      }
+    }
+    if (keep.length > 0) {
+      el.setAttribute('style', keep.join(';'));
+    } else {
+      el.removeAttribute('style');
+    }
+  });
 
-  const tabNav = `
-  <nav class="wrapped-tab-nav">
-    <div class="wrapped-tab-bar">
-      ${tabs.map((t, i) => `<button class="wrapped-tab-btn${i === 0 ? ' is-active' : ''}" data-tab="${t.id}" type="button">${t.label}</button>`).join('')}
-    </div>
-  </nav>`;
+  // Bake CountUp final values (the off-screen container never triggers useInView)
+  clone.querySelectorAll<HTMLElement>('[data-countup-value]').forEach(el => {
+    const raw = Number(el.getAttribute('data-countup-value') ?? 0);
+    const decimals = Number(el.getAttribute('data-countup-decimals') ?? 0);
+    const prefix = el.getAttribute('data-countup-prefix') ?? '';
+    const suffix = el.getAttribute('data-countup-suffix') ?? '';
+    el.textContent = prefix + raw.toLocaleString('it-IT', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }) + suffix;
+    el.removeAttribute('data-countup-value');
+    el.removeAttribute('data-countup-decimals');
+    el.removeAttribute('data-countup-prefix');
+    el.removeAttribute('data-countup-suffix');
+  });
 
-  const tabPanels = tabs.map((t, i) => `
-    <div class="export-tab-panel" data-panel="${t.id}" style="${i > 0 ? 'display:none' : ''}">
-      ${t.content}
-    </div>
-  `).join('');
+  // Remove React/Framer-specific data attributes
+  clone.querySelectorAll('[data-framer-appear-id], [data-projection-id]').forEach(el => {
+    el.removeAttribute('data-framer-appear-id');
+    el.removeAttribute('data-projection-id');
+  });
 
-  const footer = `<p class="export-banner">Generato con <strong>Telegram Wrapped</strong> — nessun dato inviato a server esterni.</p>`;
+  // ── 8. Convert data-export-tab panels into proper tab panels ──
+  report('Preparazione layout…', 80);
 
-  report('Finalizzazione HTML…', 90);
+  // The hidden container has [data-export-tab="xxx"] divs — convert them
+  // into togglable panels. First tab visible, rest hidden.
+  const exportPanels = clone.querySelectorAll<HTMLElement>('[data-export-tab]');
+  exportPanels.forEach((panel, i) => {
+    panel.setAttribute('data-panel', panel.getAttribute('data-export-tab')!);
+    panel.removeAttribute('data-export-tab');
+    panel.classList.add('export-tab-panel');
+    if (i > 0) panel.style.display = 'none';
+  });
+
+  // ── 9. Add scroll-reveal class to major sections ──
+  clone.querySelectorAll('.wrapped-panel, .wrapped-sticker-user-card, .sticker-podium-card, .sticker-graveyard-cell, .wrapped-sticker-museum-card, .sticker-hero-pill, .sticker-anchor, .wrapped-versus-card, .wrapped-bento-stat, .wrapped-story-card, .wrapped-mini-card')
+    .forEach(el => el.classList.add('export-reveal'));
+
+  // ── 10. Get the final cleaned innerHTML ──
+  report('Costruzione HTML…', 85);
+  const bodyContent = clone.outerHTML;
+
+  const chatTitle = data.chatName
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  report('Finalizzazione HTML…', 92);
 
   const html = `<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(data.chatName)} — Telegram Wrapped</title>
+<title>${chatTitle} — Telegram Wrapped</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0}
-html,body{min-height:100%;background:#030303;color:#fff;font-family:'Inter',system-ui,sans-serif}
+html,body{min-height:100%;background:#030303;color:#fff;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
+
 ${WRAPPED_DASHBOARD_STYLES}
 
-/* ===== EXPORT-SPECIFIC ===== */
+/* ===== EXPORT: scroll-reveal (replaces Framer Motion) ===== */
+.export-reveal{opacity:0;transform:translateY(22px);transition:opacity .55s cubic-bezier(.16,1,.3,1),transform .55s cubic-bezier(.16,1,.3,1)}
+.export-reveal.is-visible{opacity:1;transform:translateY(0)}
+
+/* Stagger children inside grids */
+.wrapped-highlight-list .export-reveal,
+.wrapped-versus-list .export-reveal,
+.wrapped-sticker-museum-grid .export-reveal,
+.sticker-graveyard-grid .export-reveal,
+.sticker-podium .export-reveal,
+.sticker-hero-stats .export-reveal,
+.sticker-hero-anchors .export-reveal,
+.wrapped-sticker-top-grid .export-reveal{transition-delay:calc(var(--reveal-i,0) * 60ms)}
+
+/* Hover micro-interactions (replaces Framer whileHover) */
+.wrapped-versus-card:hover,.wrapped-bento-stat:hover,.wrapped-story-card:hover,
+.wrapped-sticker-museum-card:hover,.sticker-podium-card:hover{transform:translateY(-6px)!important}
+.wrapped-sticker-top-card:hover{transform:scale(1.1) rotate(3deg)!important}
+.sticker-mosaic-cell:hover{transform:scale(1.3);z-index:10}
+.sticker-graveyard-cell:hover{opacity:1!important;transform:scale(1.2) rotate(5deg)!important}
+
+/* Pop-in for podium & pills */
+.sticker-podium-card.is-visible,.sticker-hero-pill.is-visible{animation:popIn .5s cubic-bezier(.16,1,.3,1) both}
+@keyframes popIn{from{opacity:0;transform:scale(.5) translateY(30px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+/* Slide-from-side for battle cards */
+.wrapped-sticker-battle-grid > :first-child.is-visible{animation:slideLeft .55s cubic-bezier(.16,1,.3,1) both}
+.wrapped-sticker-battle-grid > :last-child.is-visible{animation:slideRight .55s cubic-bezier(.16,1,.3,1) both}
+@keyframes slideLeft{from{opacity:0;transform:translateX(-60px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:translateX(0)}}
+
+/* VS badge pop */
+.sticker-vs-badge.is-visible{animation:vsPop .4s cubic-bezier(.16,1,.3,1) .4s both}
+@keyframes vsPop{from{opacity:0;transform:translate(-50%,-50%) scale(0)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+/* Graveyard cells: ghostly entrance */
+.sticker-graveyard-cell.is-visible{animation:ghostIn .45s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--reveal-i,0) * 40ms)}
+@keyframes ghostIn{from{opacity:0;transform:scale(.3) rotate(-15deg)}to{opacity:.65;transform:scale(1) rotate(0)}}
+
 .export-tab-panel{display:flex;flex-direction:column;gap:28px}
 .export-banner{text-align:center;padding:24px;color:#666;font-size:.78rem}
 .export-banner strong{color:#b4ff00}
-
-/* Scroll fade-in animation */
-.anim-fade-up{opacity:0;transform:translateY(24px);animation:exportFadeUp .6s ease-out forwards}
-@keyframes exportFadeUp{to{opacity:1;transform:translateY(0)}}
-
-/* Stagger via intersection observer — start hidden, revealed by JS */
-.anim-observed{opacity:0;transform:translateY(24px);transition:opacity .5s ease-out,transform .5s ease-out}
-.anim-observed.is-visible{opacity:1;transform:translateY(0)}
 </style>
 </head>
 <body>
-<div class="wrapped-shell">
-<div class="wrapped-page wrapped-stack">
-${tabNav}
-<div class="wrapped-tab-content">
-${tabPanels}
-</div>
-${footer}
-</div>
-</div>
+${bodyContent}
+<p class="export-banner">Generato con <strong>Telegram Wrapped</strong> — nessun dato inviato a server esterni.</p>
 <script>
 (function(){
-  // Tab switching
-  var btns=document.querySelectorAll('.wrapped-tab-btn');
-  var panels=document.querySelectorAll('.export-tab-panel');
+  /* ── Tab switching ── */
+  var btns=document.querySelectorAll('.wrapped-tab-btn[data-tab]');
+  var panels=document.querySelectorAll('.export-tab-panel[data-panel]');
   btns.forEach(function(btn){
     btn.addEventListener('click',function(){
       btns.forEach(function(b){b.classList.remove('is-active')});
       btn.classList.add('is-active');
       var id=btn.getAttribute('data-tab');
       panels.forEach(function(p){p.style.display=p.getAttribute('data-panel')===id?'':'none'});
+      /* Re-observe newly-visible reveal elements */
+      if(typeof obs!=='undefined'){
+        document.querySelectorAll('.export-tab-panel[data-panel="'+id+'"] .export-reveal:not(.is-visible)').forEach(function(el){obs.observe(el)});
+      }
     });
   });
 
-  // Scroll-triggered fade-in via IntersectionObserver
+  /* ── Scroll-reveal via IntersectionObserver ── */
+  var obs;
   if('IntersectionObserver' in window){
-    var obs=new IntersectionObserver(function(entries){
+    obs=new IntersectionObserver(function(entries){
       entries.forEach(function(e){
         if(e.isIntersecting){e.target.classList.add('is-visible');obs.unobserve(e.target)}
       });
-    },{threshold:0.08,rootMargin:'0px 0px -60px 0px'});
-    document.querySelectorAll('.anim-fade-up').forEach(function(el){
-      el.classList.remove('anim-fade-up');
-      el.classList.add('anim-observed');
+    },{threshold:0.06,rootMargin:'0px 0px -80px 0px'});
+
+    document.querySelectorAll('.export-reveal').forEach(function(el,i){
+      el.style.setProperty('--reveal-i',String(i%12));
       obs.observe(el);
     });
+
+    /* Also observe VS badge separately */
+    document.querySelectorAll('.sticker-vs-badge').forEach(function(el){obs.observe(el)});
+  } else {
+    /* Fallback: just show everything */
+    document.querySelectorAll('.export-reveal').forEach(function(el){el.classList.add('is-visible')});
   }
 })();
 </script>

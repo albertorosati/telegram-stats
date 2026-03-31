@@ -35,7 +35,14 @@ export function CountUp({ value, className, decimals = 0, prefix = '', suffix = 
   }, [isInView, value]);
 
   return (
-    <span className={className} ref={ref}>
+    <span
+      className={className}
+      data-countup-decimals={decimals}
+      data-countup-prefix={prefix || undefined}
+      data-countup-suffix={suffix || undefined}
+      data-countup-value={value}
+      ref={ref}
+    >
       {prefix}
       {displayValue.toLocaleString('it-IT', {
         minimumFractionDigits: decimals,
