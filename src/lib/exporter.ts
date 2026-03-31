@@ -1268,74 +1268,415 @@ export function getWrappedExportFileName(chatName: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// BLOB → DATA-URL CONVERTER
+// BLOB → DATA-URL CONVERTER (uses tracked blob registry)
 // ---------------------------------------------------------------------------
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
+  // Try the tracked blob registry first (more reliable)
+  const { getTrackedBlob } = await import('./analytics/parser');
+  const tracked = getTrackedBlob(blobUrl);
+  if (tracked) {
+    return blobToBase64(tracked);
+  }
+  // Fallback to fetch
   try {
     const response = await fetch(blobUrl);
     const blob = await response.blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+    return blobToBase64(blob);
   } catch {
     return '';
   }
 }
 
 // ---------------------------------------------------------------------------
-// STANDALONE HTML EXPORT
+// HTML / MEDIA HELPERS
 // ---------------------------------------------------------------------------
 
-export async function exportToSingleHTML(data: WrappedData): Promise<string> {
-  // Collect all blob URLs that need conversion
-  const blobUrls = new Set<string>();
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
-  function collect(url: string | undefined) {
-    if (url && url.startsWith('blob:')) {
-      blobUrls.add(url);
-    }
+function numFmt(n: number): string {
+  return n.toLocaleString('it-IT');
+}
+
+function dateFmt(d: Date | string | null | undefined): string {
+  if (!d) return 'N/D';
+  return new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(d));
+}
+
+function mediaTag(
+  url: string | undefined,
+  blobMap: Map<string, string>,
+  isAnimated = false,
+  cssClass = '',
+): string {
+  if (!url) {
+    return `<div class="wrapped-media-frame ${cssClass}"><span class="wrapped-footnote">–</span></div>`;
+  }
+  const resolved = (url.startsWith('blob:') ? blobMap.get(url) : url) ?? url;
+  const isVideo = isAnimated || resolved.startsWith('data:video');
+  if (isVideo) {
+    return `<div class="wrapped-media-frame ${cssClass}"><video src="${resolved}" autoplay loop muted playsinline></video></div>`;
+  }
+  return `<div class="wrapped-media-frame ${cssClass}"><img src="${resolved}" alt="sticker"></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// SECTION BUILDERS
+// ---------------------------------------------------------------------------
+
+function buildHeroSection(data: WrappedData): string {
+  const [u1, u2] = data.users;
+  const activeDays = Math.max(data.global.dailyVolume.length, 1);
+  const ed = u1.positivity + u2.positivity - u1.negativity - u2.negativity;
+  return `
+  <section class="wrapped-panel wrapped-hero anim-fade-up">
+    <div class="wrapped-hero-grid">
+      <div>
+        <p class="wrapped-kicker">Il recap della chat</p>
+        <h1 class="wrapped-title">
+          <span class="wrapped-title-user-a">${escapeHtml(u1.name)}</span>
+          <span class="wrapped-title-plus"> + </span>
+          <span class="wrapped-title-user-b">${escapeHtml(u2.name)}</span><br>Wrapped
+        </h1>
+        <p class="wrapped-subtitle">Questa chat è un piccolo universo fatto di testo, sticker, audio, caos e rituali notturni.</p>
+      </div>
+      <div class="wrapped-hero-side">
+        <div class="wrapped-mini-card wrapped-mini-card-accent"><p class="wrapped-mini-label">🔥 Giorni attivi</p><p class="wrapped-mini-value">${numFmt(activeDays)}</p></div>
+        <div class="wrapped-mini-card"><p class="wrapped-mini-label">💬 Messaggi totali</p><p class="wrapped-mini-value">${numFmt(data.global.totalMessages)}</p><p class="wrapped-mini-detail">${numFmt(data.stickers.total)} sticker · ${numFmt(data.global.totalLoveWords)} parole ad alta intensità</p></div>
+        <div class="wrapped-mini-card wrapped-mini-card-secondary"><p class="wrapped-mini-label">⚡ Pressione emotiva</p><p class="wrapped-mini-value">${ed >= 0 ? '+' : ''}${numFmt(ed)}</p></div>
+      </div>
+    </div>
+  </section>`;
+}
+
+function buildOverviewSection(data: WrappedData): string {
+  const activeDays = Math.max(data.global.dailyVolume.length, 1);
+  const msgPerDay = (data.global.totalMessages / activeDays).toFixed(1);
+  const stickerDensity = data.global.totalMessages === 0 ? '0' : ((data.stickers.total / data.global.totalMessages) * 100).toFixed(1);
+  const totalPos = data.users.reduce((s, u) => s + u.positivity, 0);
+  const totalNeg = data.users.reduce((s, u) => s + u.negativity, 0);
+  const fastest = [...data.users].filter(u => u.avgResponseTime > 0).sort((a, b) => a.avgResponseTime - b.avgResponseTime)[0] ?? data.users[0];
+
+  const cards = [
+    { emoji: '⌨️', label: 'Media messaggi al giorno', value: msgPerDay, detail: `${numFmt(activeDays)} giorni attivi` },
+    { emoji: '🍌', label: 'Densità sticker', value: `${stickerDensity}%`, detail: 'sticker ogni 100 messaggi' },
+    { emoji: '⚡', label: 'Saldo emotivo', value: `${totalPos - totalNeg >= 0 ? '+' : ''}${numFmt(totalPos - totalNeg)}`, detail: `${numFmt(totalPos)} pos vs ${numFmt(totalNeg)} neg` },
+    { emoji: '💨', label: 'Risposta lampo', value: fastest.avgResponseTimeLabel, detail: `${escapeHtml(fastest.name)} è il più rapido` },
+  ];
+
+  return `
+  <section class="wrapped-panel wrapped-scene anim-fade-up">
+    <div class="wrapped-panel-inner">
+      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">I grandi numeri</span><h2 class="wrapped-section-title">I grandi numeri</h2></div></div>
+      <div class="wrapped-highlight-list">
+        ${cards.map((c, i) => `
+          <article class="wrapped-bento-stat anim-fade-up" style="animation-delay:${i * 0.06}s">
+            <div class="wrapped-bento-head"><span class="wrapped-bento-emoji">${c.emoji}</span></div>
+            <p class="wrapped-metric-label">${escapeHtml(c.label)}</p>
+            <p class="wrapped-metric-value">${c.value}</p>
+            <p class="wrapped-metric-detail">${c.detail}</p>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  </section>`;
+}
+
+function buildAwardsSection(data: WrappedData): string {
+  if (!data.global.awards?.length) return '';
+  return `
+  <section class="wrapped-panel wrapped-scene anim-fade-up">
+    <div class="wrapped-panel-inner">
+      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Le sfide</span><h2 class="wrapped-section-title">Le sfide</h2></div></div>
+      <div class="wrapped-versus-list">
+        ${data.global.awards.map((a, i) => {
+          const base = Math.max(a.winnerScore, a.loserScore, 1);
+          return `
+          <article class="wrapped-versus-card anim-fade-up" style="animation-delay:${i * 0.05}s">
+            <div class="wrapped-versus-head"><div class="wrapped-versus-title-block"><span class="wrapped-versus-emoji">${a.emoji}</span></div><div><h3 style="margin:0;font-size:1rem;font-weight:700">${escapeHtml(a.title)}</h3><p class="wrapped-metric-detail">${escapeHtml(a.description)}</p></div></div>
+            <div class="wrapped-versus-body">
+              <div class="wrapped-versus-row"><div class="wrapped-versus-row-head"><p class="wrapped-versus-name">${escapeHtml(a.winnerName)}</p><span class="wrapped-award-mega">${a.winnerValue}</span></div><div class="wrapped-versus-track"><div class="wrapped-versus-fill wrapped-versus-fill-winner" style="width:${(a.winnerScore / base * 100).toFixed(1)}%"></div></div></div>
+              <div class="wrapped-versus-row"><div class="wrapped-versus-row-head"><p class="wrapped-versus-name">${escapeHtml(a.loserName)}</p><span class="wrapped-versus-secondary-score">${a.loserValue}</span></div><div class="wrapped-versus-track"><div class="wrapped-versus-fill wrapped-versus-fill-loser" style="width:${(a.loserScore / base * 100).toFixed(1)}%"></div></div></div>
+            </div>
+          </article>`;
+        }).join('')}
+      </div>
+    </div>
+  </section>`;
+}
+
+function buildUsersSection(data: WrappedData): string {
+  const colors = ['#b4ff00', '#bd00ff'];
+  return `
+  <section class="wrapped-panel wrapped-scene anim-fade-up">
+    <div class="wrapped-panel-inner">
+      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Ritratti</span><h2 class="wrapped-section-title">Due profili, due manie</h2></div></div>
+      <div class="wrapped-users">
+        ${data.users.map((u, i) => {
+          const c = colors[i];
+          const bal = u.positivity - u.negativity;
+          return `
+          <article class="wrapped-user-card anim-fade-up" style="border-color:${c}33;animation-delay:${i * 0.1}s">
+            <div class="wrapped-user-head"><div><h3 class="wrapped-user-name">${escapeHtml(u.name)}</h3><p class="wrapped-subtitle" style="margin-top:8px">${numFmt(u.wordCount)} parole, ${numFmt(u.vocabularySize)} termini unici, ${u.lexicalRichness}% ricchezza lessicale.</p></div></div>
+            <div class="wrapped-user-metrics">
+              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Messaggi</span><span class="wrapped-stat-value">${numFmt(u.msgCount)}</span><span class="wrapped-stat-subvalue">${u.avgWordsPerMsg} parole/msg</span></div>
+              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Bilancio emotivo</span><span class="wrapped-stat-value">${bal >= 0 ? '+' : ''}${numFmt(bal)}</span><span class="wrapped-stat-subvalue">${u.positivity} pos · ${u.negativity} neg</span></div>
+            </div>
+            <div class="wrapped-user-media">
+              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Foto</span><span class="wrapped-stat-value">${numFmt(u.imagesSent)}</span></div>
+              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Vocali</span><span class="wrapped-stat-value">${numFmt(u.voiceNotes)}</span></div>
+              <div class="wrapped-stat-box"><span class="wrapped-stat-label">Iniziative</span><span class="wrapped-stat-value">${numFmt(u.initiations)}</span><span class="wrapped-stat-subvalue">${u.doubleTexts} rincorse</span></div>
+            </div>
+            <div><p class="wrapped-metric-label">Top parole</p><div class="wrapped-pill-row">${u.topWords.slice(0, 8).map(w => `<span class="wrapped-pill">${escapeHtml(w.word)} <strong>${w.count}</strong></span>`).join('')}</div></div>
+            <div><p class="wrapped-metric-label">Top emoji</p><div class="wrapped-pill-row">${u.topEmojis.length ? u.topEmojis.slice(0, 6).map(e => `<span class="wrapped-pill">${e.emoji} <strong>${e.count}</strong></span>`).join('') : '<span class="wrapped-footnote">Nessuna</span>'}</div></div>
+          </article>`;
+        }).join('')}
+      </div>
+    </div>
+  </section>`;
+}
+
+function buildWordCloudSection(data: WrappedData): string {
+  if (!data.global.topWords?.length) return '';
+  return `
+  <section class="wrapped-panel wrapped-scene anim-fade-up">
+    <div class="wrapped-panel-inner">
+      <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Il linguaggio</span><h2 class="wrapped-section-title">La nuvola delle parole</h2></div></div>
+      <div class="wrapped-word-cloud">
+        ${data.global.topWords.slice(0, 50).map(w => {
+          const size = 1 + w.relativeSize * 4.8;
+          const hue = Math.floor(Math.random() * 60 + 70);
+          return `<span class="wrapped-word" style="font-size:${size}rem;color:hsl(${hue},80%,65%)">${escapeHtml(w.word)}</span>`;
+        }).join(' ')}
+      </div>
+    </div>
+  </section>`;
+}
+
+function buildStickerSections(data: WrappedData, blobMap: Map<string, string>): string {
+  const stickers = data.stickers;
+  if (stickers.total === 0) return '<section class="wrapped-panel wrapped-scene"><div class="wrapped-panel-inner"><p class="wrapped-footnote">Nessun sticker trovato.</p></div></section>';
+
+  const density = data.global.totalMessages > 0 ? ((stickers.total / data.global.totalMessages) * 100).toFixed(1) : '0';
+  const [u1, u2] = data.users;
+  const userColors = ['#b4ff00', '#bd00ff'];
+
+  // ── Hero ──
+  let html = `
+  <section class="wrapped-panel wrapped-scene sticker-hero-section anim-fade-up">
+    ${stickers.mosaicUrls.length > 0 ? `
+    <div class="sticker-hero-mosaic-bg" aria-hidden="true"><div class="sticker-hero-mosaic-track">
+      ${stickers.mosaicUrls.slice(0, 30).map(url => `<div class="sticker-hero-mosaic-item">${mediaTag(url, blobMap)}</div>`).join('')}
+      ${stickers.mosaicUrls.slice(0, 30).map(url => `<div class="sticker-hero-mosaic-item">${mediaTag(url, blobMap)}</div>`).join('')}
+    </div></div>` : ''}
+    <div class="wrapped-panel-inner sticker-hero-content">
+      <div class="sticker-hero-headline"><p class="wrapped-kicker">La galassia degli sticker</p>
+        <h2 class="sticker-hero-title"><span class="sticker-hero-number">${numFmt(stickers.total)}</span><span class="sticker-hero-label">sticker inviati</span></h2>
+      </div>
+      <div class="sticker-hero-stats">
+        <div class="sticker-hero-pill anim-fade-up"><span class="sticker-hero-pill-icon">🎨</span><span class="sticker-hero-pill-value">${numFmt(stickers.uniqueCount)}</span><span class="sticker-hero-pill-label">unici</span></div>
+        <div class="sticker-hero-pill anim-fade-up" style="animation-delay:.06s"><span class="sticker-hero-pill-icon">🎬</span><span class="sticker-hero-pill-value">${numFmt(stickers.animatedCount)}</span><span class="sticker-hero-pill-label">animati</span></div>
+        <div class="sticker-hero-pill anim-fade-up" style="animation-delay:.12s"><span class="sticker-hero-pill-icon">🖼️</span><span class="sticker-hero-pill-value">${numFmt(stickers.staticCount)}</span><span class="sticker-hero-pill-label">statici</span></div>
+        <div class="sticker-hero-pill anim-fade-up" style="animation-delay:.18s"><span class="sticker-hero-pill-icon">⚡</span><span class="sticker-hero-pill-value">${density}%</span><span class="sticker-hero-pill-label">densità</span></div>
+      </div>
+      <div class="sticker-hero-anchors">
+        <div class="sticker-anchor anim-fade-up"><div class="sticker-anchor-badge">🏁 Primo</div><div class="sticker-anchor-media">${mediaTag(stickers.firstSticker?.blobUrl, blobMap, stickers.firstSticker?.isAnimated)}</div><p class="sticker-anchor-meta">${stickers.firstSticker ? `${escapeHtml(stickers.firstSticker.userName)} · ${dateFmt(stickers.firstSticker.date)}` : 'N/D'}</p></div>
+        <div class="sticker-anchor anim-fade-up" style="animation-delay:.08s"><div class="sticker-anchor-badge">🔚 Ultimo</div><div class="sticker-anchor-media">${mediaTag(stickers.lastSticker?.blobUrl, blobMap, stickers.lastSticker?.isAnimated)}</div><p class="sticker-anchor-meta">${stickers.lastSticker ? `${escapeHtml(stickers.lastSticker.userName)} · ${dateFmt(stickers.lastSticker.date)}` : 'N/D'}</p></div>
+      </div>
+    </div>
+  </section>`;
+
+  // ── Holy Trinity ──
+  if (stickers.holyTrinity.length > 0) {
+    const order = [1, 0, 2];
+    html += `
+    <section class="wrapped-panel wrapped-scene anim-fade-up">
+      <div class="wrapped-panel-inner">
+        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">La santa trinità</span><h2 class="wrapped-section-title">I 3 sticker più usati in assoluto</h2></div></div>
+        <div class="sticker-podium">
+          ${order.map(rank => {
+            const s = stickers.holyTrinity[rank];
+            if (!s) return '';
+            const cls = rank === 0 ? 'sticker-podium-gold' : rank === 1 ? 'sticker-podium-silver' : 'sticker-podium-bronze';
+            return `
+            <div class="sticker-podium-card ${cls} anim-fade-up" style="animation-delay:${rank * 0.08}s">
+              ${rank === 0 ? '<div class="sticker-podium-crown">👑</div>' : ''}
+              <div class="sticker-podium-medal">#${rank + 1}</div>
+              <div class="sticker-podium-media">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}</div>
+              <span class="sticker-podium-count">${numFmt(s.count)}x</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </section>`;
   }
 
-  // Sticker podium / mosaic / first / last
+  // ── Battle ──
+  const entries = [stickers.byUser[u1.name], stickers.byUser[u2.name]].map((e, i) => e ?? { userName: data.users[i].name, count: 0, animatedCount: 0, uniqueCount: 0, podium: [], onesies: [], radarStats: [0, 0, 0, 0, 0] as [number, number, number, number, number] });
+  const winnerIdx = entries[0].count >= entries[1].count ? 0 : 1;
+
+  html += `
+  <section class="wrapped-panel wrapped-scene sticker-battle-section anim-fade-up">
+    <div class="wrapped-panel-inner">
+      <div class="sticker-battle-header"><div class="wrapped-section-head" style="text-align:center"><div><span class="wrapped-section-kicker">La battaglia degli sticker</span><h2 class="wrapped-section-title">La battaglia degli sticker</h2></div></div></div>
+      <div class="sticker-vs-container">
+        <div class="sticker-vs-badge">⚡<span>VS</span></div>
+        <div class="wrapped-sticker-battle-grid">
+          ${entries.map((entry, idx) => {
+            const animPct = entry.count === 0 ? 0 : Math.round((entry.animatedCount / entry.count) * 100);
+            const isWinner = idx === winnerIdx;
+            const color = userColors[idx];
+            return `
+            <article class="wrapped-sticker-user-card ${isWinner ? 'sticker-card-winner' : ''} anim-fade-up" style="--sticker-accent:${color};animation-delay:${idx * 0.12}s">
+              ${isWinner ? '<div class="sticker-winner-tag">🏆 Vincitore</div>' : ''}
+              <h3 class="wrapped-user-name"><span class="sticker-user-dot" style="background:${color}"></span>${escapeHtml(entry.userName)}</h3>
+              <div class="sticker-big-number"><span class="sticker-big-count">${numFmt(entry.count)}</span><span class="sticker-big-suffix">sticker</span></div>
+              <div class="wrapped-sticker-user-kpis">
+                <div class="wrapped-stat-box"><span class="wrapped-stat-label">Unici</span><span class="wrapped-stat-value">${numFmt(entry.uniqueCount)}</span></div>
+                <div class="wrapped-stat-box"><span class="wrapped-stat-label">Animati</span><span class="wrapped-stat-value">${animPct}%</span></div>
+              </div>
+              <div class="wrapped-sticker-top-grid">
+                ${entry.podium.slice(0, 3).map((s, r) => `
+                  <div class="wrapped-sticker-top-card">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}<p class="wrapped-metric-label">#${r + 1}</p><p class="wrapped-sticker-top-count">${numFmt(s.count)}x</p></div>
+                `).join('') || '<p class="wrapped-footnote">Nessuno sticker.</p>'}
+              </div>
+            </article>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  </section>`;
+
+  // ── Graveyard ──
+  const allOnesies = entries.flatMap(e => e.onesies);
+  if (allOnesies.length > 0) {
+    html += `
+    <section class="wrapped-panel wrapped-scene sticker-graveyard-section anim-fade-up">
+      <div class="wrapped-panel-inner">
+        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Il cimitero degli sticker</span><h2 class="wrapped-section-title">I Dimenticati</h2><p class="wrapped-section-description">Usati una sola volta e mai più.</p></div></div>
+        <div class="sticker-graveyard-grid">
+          ${allOnesies.map(s => `<div class="sticker-graveyard-cell">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}</div>`).join('')}
+        </div>
+        <p class="sticker-graveyard-epitaph">👻 Qui giacciono ${allOnesies.length} sticker dimenticati dal tempo</p>
+      </div>
+    </section>`;
+  }
+
+  // ── Museum ──
+  if (stickers.museumEntries.length > 0) {
+    html += `
+    <section class="wrapped-panel wrapped-scene anim-fade-up">
+      <div class="wrapped-panel-inner">
+        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Il museo degli sticker</span><h2 class="wrapped-section-title">Il museo degli sticker</h2></div></div>
+        <div class="wrapped-sticker-museum-grid">
+          ${stickers.museumEntries.map(s => `<div class="wrapped-sticker-museum-card">${mediaTag(s.blobUrl, blobMap, s.isAnimated)}<span class="wrapped-sticker-museum-count">${numFmt(s.count)}x</span></div>`).join('')}
+        </div>
+      </div>
+    </section>`;
+  }
+
+  // ── Mosaic ──
+  if (stickers.mosaicUrls.length > 0) {
+    html += `
+    <section class="wrapped-panel wrapped-scene sticker-mosaic-section anim-fade-up">
+      <div class="wrapped-panel-inner">
+        <div class="wrapped-section-head"><div><span class="wrapped-section-kicker">Mosaico sticker</span><h2 class="wrapped-section-title">La parete degli sticker</h2></div></div>
+        <div class="sticker-mosaic-scroll"><div class="sticker-mosaic-track">
+          ${stickers.mosaicUrls.map(url => `<div class="sticker-mosaic-cell">${mediaTag(url, blobMap)}</div>`).join('')}
+        </div></div>
+      </div>
+    </section>`;
+  }
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// STANDALONE HTML EXPORT — Self-contained interactive single file
+// ---------------------------------------------------------------------------
+
+export async function exportToSingleHTML(
+  data: WrappedData,
+  onProgress?: (label: string, percent: number) => void,
+): Promise<string> {
+  const report = (label: string, pct: number) => onProgress?.(label, pct);
+
+  // ── Collect all blob URLs ──
+  report('Raccolta media…', 5);
+  const blobUrls = new Set<string>();
+  const collect = (url: string | undefined) => {
+    if (url?.startsWith('blob:')) blobUrls.add(url);
+  };
+
   if (data.stickers.firstSticker) collect(data.stickers.firstSticker.blobUrl);
   if (data.stickers.lastSticker) collect(data.stickers.lastSticker.blobUrl);
-  data.stickers.holyTrinity.forEach((s) => collect(s.blobUrl));
-  data.stickers.museumEntries.forEach((s) => collect(s.blobUrl));
-  data.stickers.mosaicUrls.forEach((url) => collect(url));
-
+  data.stickers.holyTrinity.forEach(s => collect(s.blobUrl));
+  data.stickers.museumEntries.forEach(s => collect(s.blobUrl));
+  data.stickers.mosaicUrls.forEach(url => collect(url));
   for (const userStats of Object.values(data.stickers.byUser)) {
-    userStats.podium.forEach((s) => collect(s.blobUrl));
-    userStats.onesies.forEach((s) => collect(s.blobUrl));
+    userStats.podium.forEach(s => collect(s.blobUrl));
+    userStats.onesies.forEach(s => collect(s.blobUrl));
   }
+  data.global.stickerTimeline.forEach(e => collect(e.topStickerBlobUrl));
+  data.global.monthlyJourney.forEach(e => collect(e.stickerBlobUrl));
 
-  data.global.stickerTimeline.forEach((entry) => collect(entry.topStickerBlobUrl));
-  data.global.monthlyJourney.forEach((entry) => collect(entry.stickerBlobUrl));
-
-  // Convert blob URLs to data URLs
+  // ── Convert blob → data URIs ──
+  report('Conversione media in data URI…', 10);
   const blobMap = new Map<string, string>();
-  const entries = [...blobUrls];
-  const batchSize = 8;
-  for (let i = 0; i < entries.length; i += batchSize) {
-    const batch = entries.slice(i, i + batchSize);
-    const results = await Promise.all(batch.map((url) => blobUrlToDataUrl(url)));
-    batch.forEach((url, idx) => {
-      if (results[idx]) blobMap.set(url, results[idx]);
-    });
+  const urlList = [...blobUrls];
+  const batchSize = 10;
+  for (let i = 0; i < urlList.length; i += batchSize) {
+    const batch = urlList.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(url => blobUrlToDataUrl(url)));
+    batch.forEach((url, idx) => { if (results[idx]) blobMap.set(url, results[idx]); });
+    const pct = 10 + Math.floor((i / urlList.length) * 60);
+    report(`Conversione media… (${Math.min(i + batchSize, urlList.length)}/${urlList.length})`, pct);
   }
 
-  // Serialise data with data URLs instead of blob URLs
-  const serialised = JSON.stringify(data, (_key, value) => {
-    if (typeof value === 'string' && value.startsWith('blob:') && blobMap.has(value)) {
-      return blobMap.get(value);
-    }
-    return value;
-  });
+  // ── Build sections ──
+  report('Costruzione pagina…', 75);
 
-  return `<!DOCTYPE html>
+  const tabs = [
+    { id: 'summary', label: '📊 Riassunto', content: buildHeroSection(data) + buildOverviewSection(data) },
+    { id: 'challenges', label: '⚔️ Le Sfide', content: buildAwardsSection(data) },
+    { id: 'profiles', label: '👤 I Profili', content: buildUsersSection(data) },
+    { id: 'language', label: '💬 Linguaggio', content: buildWordCloudSection(data) },
+    { id: 'stickers', label: '🎭 Stickers', content: buildStickerSections(data, blobMap) },
+  ];
+
+  const tabNav = `
+  <nav class="wrapped-tab-nav">
+    <div class="wrapped-tab-bar">
+      ${tabs.map((t, i) => `<button class="wrapped-tab-btn${i === 0 ? ' is-active' : ''}" data-tab="${t.id}" type="button">${t.label}</button>`).join('')}
+    </div>
+  </nav>`;
+
+  const tabPanels = tabs.map((t, i) => `
+    <div class="export-tab-panel" data-panel="${t.id}" style="${i > 0 ? 'display:none' : ''}">
+      ${t.content}
+    </div>
+  `).join('');
+
+  const footer = `<p class="export-banner">Generato con <strong>Telegram Wrapped</strong> — nessun dato inviato a server esterni.</p>`;
+
+  report('Finalizzazione HTML…', 90);
+
+  const html = `<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="utf-8">
@@ -1349,117 +1690,63 @@ export async function exportToSingleHTML(data: WrappedData): Promise<string> {
 html,body{min-height:100%;background:#030303;color:#fff;font-family:'Inter',system-ui,sans-serif}
 a{color:inherit;text-decoration:none}
 ${WRAPPED_DASHBOARD_STYLES}
-.export-banner{text-align:center;padding:18px;color:#8b8b95;font-size:.78rem}
-.export-section{padding:28px 22px;border-radius:22px;background:rgba(17,17,17,.82);border:1px solid rgba(255,255,255,.08);margin-bottom:18px}
-.export-section h2{font-size:1.4rem;font-weight:800;margin-bottom:14px}
-.export-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-.export-card{padding:18px;border-radius:18px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}
-.export-card h3{font-size:1rem;font-weight:700;margin-bottom:6px}
-.export-card p{color:#999;font-size:.82rem;line-height:1.6}
-.export-sticker{width:80px;height:80px;object-fit:contain;border-radius:12px}
-.export-bar{height:8px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden;margin:6px 0}
-.export-bar-fill{height:100%;border-radius:99px}
+
+/* ===== EXPORT-SPECIFIC ===== */
+.export-tab-panel{display:flex;flex-direction:column;gap:28px}
+.export-banner{text-align:center;padding:24px;color:#666;font-size:.78rem}
+.export-banner strong{color:#b4ff00}
+
+/* Scroll fade-in animation */
+.anim-fade-up{opacity:0;transform:translateY(24px);animation:exportFadeUp .6s ease-out forwards}
+@keyframes exportFadeUp{to{opacity:1;transform:translateY(0)}}
+
+/* Stagger via intersection observer — start hidden, revealed by JS */
+.anim-observed{opacity:0;transform:translateY(24px);transition:opacity .5s ease-out,transform .5s ease-out}
+.anim-observed.is-visible{opacity:1;transform:translateY(0)}
 </style>
 </head>
 <body>
 <div class="wrapped-shell">
-<div class="wrapped-page wrapped-stack" id="root"></div>
+<div class="wrapped-page wrapped-stack">
+${tabNav}
+<div class="wrapped-tab-content">
+${tabPanels}
+</div>
+${footer}
+</div>
 </div>
 <script>
-var DATA=${serialised};
-(function(d){
-  var root=document.getElementById('root');
-  var h=function(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html!==undefined)e.innerHTML=html;return e};
-
-  // Hero
-  var hero=h('section','wrapped-panel wrapped-hero');
-  hero.innerHTML='<div class="wrapped-hero-grid"><div>'
-    +'<p class="wrapped-kicker">Il recap della chat</p>'
-    +'<h1 class="wrapped-title"><span class="wrapped-title-user-a">'+esc(d.users[0].name)+'</span>'
-    +'<span class="wrapped-title-plus"> + </span>'
-    +'<span class="wrapped-title-user-b">'+esc(d.users[1].name)+'</span><br>Wrapped</h1>'
-    +'<p class="wrapped-subtitle">Export statico generato dal browser.</p>'
-    +'</div><div class="wrapped-hero-side">'
-    +'<div class="wrapped-mini-card wrapped-mini-card-accent"><p class="wrapped-mini-label">Messaggi totali</p><p class="wrapped-mini-value">'+num(d.global.totalMessages)+'</p></div>'
-    +'<div class="wrapped-mini-card"><p class="wrapped-mini-label">Streak massima</p><p class="wrapped-mini-value">'+num(d.global.streak.maxStreak)+' giorni</p></div>'
-    +'<div class="wrapped-mini-card wrapped-mini-card-secondary"><p class="wrapped-mini-label">Sticker totali</p><p class="wrapped-mini-value">'+num(d.stickers.total)+'</p></div>'
-    +'</div></div>';
-  root.appendChild(hero);
-
-  // Awards
-  if(d.global.awards&&d.global.awards.length){
-    var aw=h('section','export-section');
-    aw.innerHTML='<h2>Le Sfide</h2><div class="export-grid">'+d.global.awards.map(function(a){
-      var base=Math.max(a.winnerScore,a.loserScore,1);
-      return '<div class="export-card"><h3>'+esc(a.emoji)+' '+esc(a.title)+'</h3><p>'+esc(a.description)+'</p>'
-        +'<p style="margin-top:8px"><strong style="color:#b4ff00">'+esc(a.winnerName)+'</strong>: '+num(a.winnerScore)+'</p>'
-        +'<div class="export-bar"><div class="export-bar-fill" style="width:'+(a.winnerScore/base*100)+'%;background:linear-gradient(90deg,#b4ff00,#00d1ff)"></div></div>'
-        +'<p><strong style="color:#bd00ff">'+esc(a.loserName)+'</strong>: '+num(a.loserScore)+'</p>'
-        +'<div class="export-bar"><div class="export-bar-fill" style="width:'+(a.loserScore/base*100)+'%;background:rgba(189,0,255,.5)"></div></div>'
-        +'</div>';
-    }).join('')+'</div>';
-    root.appendChild(aw);
-  }
-
-  // Users
-  d.users.forEach(function(u,i){
-    var c=['#b4ff00','#bd00ff'][i];
-    var sec=h('section','export-section');
-    var stk=d.stickers.byUser[u.name]||{count:0,animatedCount:0,podium:[]};
-    sec.innerHTML='<h2 style="color:'+c+'">'+esc(u.name)+'</h2>'
-      +'<div class="export-grid">'
-      +'<div class="export-card"><h3>Messaggi</h3><p style="font-size:2rem;font-weight:800">'+num(u.msgCount)+'</p><p>'+num(u.wordCount)+' parole</p></div>'
-      +'<div class="export-card"><h3>Lessico</h3><p style="font-size:2rem;font-weight:800">'+u.lexicalRichness+'%</p><p>'+num(u.vocabularySize)+' termini unici</p></div>'
-      +'<div class="export-card"><h3>Sticker</h3><p style="font-size:2rem;font-weight:800">'+num(stk.count)+'</p><p>'+stk.animatedCount+' animati</p></div>'
-      +'<div class="export-card"><h3>Media</h3><p>'+u.imagesSent+' foto · '+u.voiceNotes+' vocali · '+u.videoFiles+' video</p></div>'
-      +'</div>'
-      +'<div style="margin-top:14px"><p class="wrapped-metric-label">Top parole</p><div class="wrapped-pill-row">'
-      +u.topWords.slice(0,8).map(function(w){return '<span class="wrapped-pill">'+esc(w.word)+' <strong>'+w.count+'</strong></span>'}).join('')
-      +'</div></div>'
-      +'<div style="margin-top:10px"><p class="wrapped-metric-label">Top emoji</p><div class="wrapped-pill-row">'
-      +(u.topEmojis.length?u.topEmojis.slice(0,6).map(function(e){return '<span class="wrapped-pill">'+e.emoji+' <strong>'+e.count+'</strong></span>'}).join(''):'<span class="wrapped-footnote">Nessuna</span>')
-      +'</div></div>';
-    root.appendChild(sec);
-  });
-
-  // Sticker podium
-  var byU=d.stickers.byUser;
-  var podiumHtml='';
-  d.users.forEach(function(u){
-    var su=byU[u.name];
-    if(!su||!su.podium.length)return;
-    podiumHtml+='<h3 style="margin:14px 0 8px">'+esc(u.name)+'</h3><div style="display:flex;gap:14px;flex-wrap:wrap">';
-    su.podium.slice(0,3).forEach(function(s,i){
-      var tag=s.isAnimated?'<video class="export-sticker" src="'+s.blobUrl+'" autoplay loop muted playsinline></video>':'<img class="export-sticker" src="'+s.blobUrl+'" alt="sticker">';
-      podiumHtml+='<div style="text-align:center">'+tag+'<p style="color:#b4ff00;font-weight:700;font-size:.85rem">#'+(i+1)+' · '+s.count+'x</p></div>';
+(function(){
+  // Tab switching
+  var btns=document.querySelectorAll('.wrapped-tab-btn');
+  var panels=document.querySelectorAll('.export-tab-panel');
+  btns.forEach(function(btn){
+    btn.addEventListener('click',function(){
+      btns.forEach(function(b){b.classList.remove('is-active')});
+      btn.classList.add('is-active');
+      var id=btn.getAttribute('data-tab');
+      panels.forEach(function(p){p.style.display=p.getAttribute('data-panel')===id?'':'none'});
     });
-    podiumHtml+='</div>';
   });
-  if(podiumHtml){
-    var stkSec=h('section','export-section');
-    stkSec.innerHTML='<h2>Podio Sticker</h2>'+podiumHtml;
-    root.appendChild(stkSec);
+
+  // Scroll-triggered fade-in via IntersectionObserver
+  if('IntersectionObserver' in window){
+    var obs=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){e.target.classList.add('is-visible');obs.unobserve(e.target)}
+      });
+    },{threshold:0.08,rootMargin:'0px 0px -60px 0px'});
+    document.querySelectorAll('.anim-fade-up').forEach(function(el){
+      el.classList.remove('anim-fade-up');
+      el.classList.add('anim-observed');
+      obs.observe(el);
+    });
   }
-
-  // Footer
-  root.appendChild(h('p','export-banner','Generato con Telegram Wrapped — nessun dato inviato a server esterni.'));
-
-  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-  function num(n){return Number(n).toLocaleString('it-IT')}
-})(DATA);
+})();
 </script>
 </body>
 </html>`;
-}
 
-// ---------------------------------------------------------------------------
-// HTML-ESCAPE HELPER
-// ---------------------------------------------------------------------------
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  report('Fatto!', 100);
+  return html;
 }

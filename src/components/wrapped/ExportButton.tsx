@@ -11,15 +11,19 @@ interface ExportButtonProps {
 
 export function ExportButton({ data }: ExportButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
+  const [progressLabel, setProgressLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   async function handleExport(): Promise<void> {
     setIsExporting(true);
     setError(null);
+    setProgressLabel('Avvio esportazione…');
 
     try {
-      const html = await exportToSingleHTML(data);
+      const html = await exportToSingleHTML(data, (label, _pct) => {
+        setProgressLabel(label);
+      });
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       const downloadUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -36,13 +40,14 @@ export function ExportButton({ data }: ExportButtonProps) {
       });
     } finally {
       setIsExporting(false);
+      setProgressLabel('');
     }
   }
 
   return (
     <div>
       <button className='wrapped-export-button' disabled={isExporting} onClick={handleExport} type='button'>
-        {isExporting ? 'Sto costruendo l\'HTML autonomo…' : 'Esporta HTML autonomo'}
+        {isExporting ? progressLabel || 'Esportazione…' : 'Esporta HTML (file unico)'}
       </button>
       {error ? <p className='wrapped-error'>{error}</p> : null}
     </div>
