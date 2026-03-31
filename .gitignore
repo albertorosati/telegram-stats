@@ -1,4 +1,6 @@
+.next_backup_*
 .next
+.tmp
 node_modules
 out
 npm-debug.log*
