@@ -244,6 +244,27 @@ export interface MonthlyJourneyEntry {
   isAnimated?: boolean;
 }
 
+/** Rich monthly snapshot — powers the temporal journey UI */
+export interface MonthlySnapshot {
+  month: string;
+  label: string;
+  totalMessages: number;
+  messagesPerUser: Record<string, number>;
+  topWords: Array<{ word: string; count: number }>;
+  topEmojis: Array<{ emoji: string; count: number }>;
+  topStickers: StickerPodiumEntry[];
+  sentiment: { pos: number; neg: number; love: number };
+  voiceNotes: number;
+  photos: number;
+  videos: number;
+  /** Day with most messages: "12 Mar" + count */
+  peakDay: { label: string; count: number } | null;
+  /** Average messages per active day in that month */
+  avgMsgsPerDay: number;
+  /** Dynamic storytelling sentence for the month */
+  flavorText: string;
+}
+
 export interface ChatChallenge {
   key: string;
   title: string;
@@ -313,6 +334,9 @@ export interface GlobalStats {
   topWords: Array<{ word: string; count: number; relativeSize: number }>;
 
   stickerTimeline: StickerTimelineEntry[];
+
+  /** Rich monthly snapshots — top words, stickers, emojis, media per month */
+  monthlySnapshots: MonthlySnapshot[];
 }
 
 // ---------------------------------------------------------------------------

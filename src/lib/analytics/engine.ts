@@ -17,6 +17,7 @@ import type {
   HeatmapCell,
   MonthlySentimentPoint,
   MonthlyJourneyEntry,
+  MonthlySnapshot,
   MediaChaosStats,
   ChatChallenge,
   HighlightCardStat,
@@ -214,6 +215,14 @@ export function runAnalytics(
   let firstSticker: { path: string; date: Date; userName: string; isAnimated: boolean } | null = null;
   let lastSticker: { path: string; date: Date; userName: string; isAnimated: boolean } | null = null;
 
+  // Monthly snapshot accumulators
+  const monthlyWordMap = new Map<string, Map<string, number>>();
+  const monthlyEmojiMap = new Map<string, Map<string, number>>();
+  const monthlyUserMsgMap = new Map<string, Map<string, number>>();
+  const monthlyMediaMap = new Map<string, { voice: number; photos: number; videos: number }>();
+  const monthlyLoveMap = new Map<string, number>();
+  const monthlyDailyMap = new Map<string, Map<string, number>>(); // YYYY-MM → Map<YYYY-MM-DD, count>
+
   let lastMsgTime: Date | null = null;
   let lastSender: string | null = null;
   let currentSenderStreak = 0;
@@ -276,16 +285,31 @@ export function runAnalytics(
     }
     monthlyStoryRaw.get(monthKey)!.messages++;
 
+    // Monthly snapshot accumulators
+    if (!monthlyUserMsgMap.has(monthKey)) monthlyUserMsgMap.set(monthKey, new Map());
+    const muMap = monthlyUserMsgMap.get(monthKey)!;
+    muMap.set(sender, (muMap.get(sender) ?? 0) + 1);
+
+    if (!monthlyWordMap.has(monthKey)) monthlyWordMap.set(monthKey, new Map());
+    if (!monthlyEmojiMap.has(monthKey)) monthlyEmojiMap.set(monthKey, new Map());
+    if (!monthlyMediaMap.has(monthKey)) monthlyMediaMap.set(monthKey, { voice: 0, photos: 0, videos: 0 });
+    if (!monthlyDailyMap.has(monthKey)) monthlyDailyMap.set(monthKey, new Map());
+    const mdMap = monthlyDailyMap.get(monthKey)!;
+    mdMap.set(dateKey, (mdMap.get(dateKey) ?? 0) + 1);
+
     // ─── Media ──────────────────────────────────────────────────────────────
     const mType = msg.media_type;
     if (mType === 'voice_message') {
       u.voiceNotes++;
       u.voiceDuration += msg.duration_seconds ?? 0;
+      monthlyMediaMap.get(monthKey)!.voice++;
     } else if (mType === 'video_file') {
       u.videoFiles++;
       u.videoDuration += msg.duration_seconds ?? 0;
+      monthlyMediaMap.get(monthKey)!.videos++;
     } else if (msg.photo || mType === 'photo') {
       u.imagesSent++;
+      monthlyMediaMap.get(monthKey)!.photos++;
     }
 
     // ─── Text analysis ──────────────────────────────────────────────────────
@@ -320,9 +344,11 @@ export function runAnalytics(
 
       for (const wRaw of textContent.split(/\s+/)) {
         // Emoji extraction (character by character)
+        const mwEmoji = monthlyEmojiMap.get(monthKey)!;
         for (const char of wRaw) {
           if (isEmoji(char)) {
             u.emojis.set(char, (u.emojis.get(char) ?? 0) + 1);
+            mwEmoji.set(char, (mwEmoji.get(char) ?? 0) + 1);
           }
         }
 
@@ -337,7 +363,7 @@ export function runAnalytics(
           continue;
         }
 
-        if (LOVE_WORDS.has(wClean)) { u.loveScore++; monthlyStoryRaw.get(monthKey)!.love++; }
+        if (LOVE_WORDS.has(wClean)) { u.loveScore++; monthlyStoryRaw.get(monthKey)!.love++; monthlyLoveMap.set(monthKey, (monthlyLoveMap.get(monthKey) ?? 0) + 1); }
         if (POSITIVE_WORDS.has(wClean)) { u.positivity++; monthSent.pos++; monthlyStoryRaw.get(monthKey)!.pos++; }
         if (NEGATIVE_WORDS.has(wClean)) { u.negativity++; monthSent.neg++; monthlyStoryRaw.get(monthKey)!.neg++; }
         if (SLANG_WORDS.has(wClean)) u.slangScore++;
@@ -345,6 +371,8 @@ export function runAnalytics(
         if (wClean.length >= 2 && !STOPWORDS.has(wClean)) {
           globalWords.set(wClean, (globalWords.get(wClean) ?? 0) + 1);
           u.words.set(wClean, (u.words.get(wClean) ?? 0) + 1);
+          const mwWords = monthlyWordMap.get(monthKey)!;
+          mwWords.set(wClean, (mwWords.get(wClean) ?? 0) + 1);
         }
       }
     }
@@ -904,6 +932,111 @@ export function runAnalytics(
       };
     });
 
+  // ── Monthly Snapshots ─────────────────────────────────────────────────────
+  const allMonthKeys = new Set([
+    ...monthlyWordMap.keys(),
+    ...monthlyStoryRaw.keys(),
+    ...stickerTimeline.keys(),
+  ]);
+  const MONTHS_SHORT_LABEL = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+  const monthlySnapshots: MonthlySnapshot[] = Array.from(allMonthKeys)
+    .sort()
+    .map((mk) => {
+      const [yy, mm] = mk.split('-');
+      const label = `${MONTHS_SHORT_LABEL[parseInt(mm, 10) - 1]} '${yy.slice(2)}`;
+
+      // Top words
+      const wMap = monthlyWordMap.get(mk);
+      const topW = wMap
+        ? Array.from(wMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([word, count]) => ({ word, count }))
+        : [];
+
+      // Top emojis
+      const eMap = monthlyEmojiMap.get(mk);
+      const topE = eMap
+        ? Array.from(eMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([emoji, count]) => ({ emoji, count }))
+        : [];
+
+      // Top 3 stickers
+      const stMap = stickerTimeline.get(mk);
+      const topSt: StickerPodiumEntry[] = stMap
+        ? Array.from(stMap.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([path, count]) => ({
+              path,
+              blobUrl: blobUrlMap.get(path) ?? '',
+              count,
+              isAnimated: (globalAnimatedStickerMap.get(path) ?? 0) > 0,
+            }))
+        : [];
+
+      // Per-user messages
+      const userMsgs: Record<string, number> = {};
+      const umMap = monthlyUserMsgMap.get(mk);
+      if (umMap) { for (const [name, cnt] of umMap) userMsgs[name] = cnt; }
+
+      const story = monthlyStoryRaw.get(mk);
+      const media = monthlyMediaMap.get(mk);
+
+      // Peak day + average
+      const dMap = monthlyDailyMap.get(mk);
+      let peakDay: { label: string; count: number } | null = null;
+      let avgMsgsPerDay = 0;
+      if (dMap && dMap.size > 0) {
+        let maxDate = '';
+        let maxCount = 0;
+        for (const [d, c] of dMap) {
+          if (c > maxCount) { maxCount = c; maxDate = d; }
+        }
+        const pd = new Date(maxDate);
+        const DAY_LABEL_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+        peakDay = { label: `${pd.getDate()} ${DAY_LABEL_SHORT[pd.getMonth()]}`, count: maxCount };
+        avgMsgsPerDay = Math.round((story?.messages ?? 0) / dMap.size);
+      }
+
+      // Flavor text
+      const total = story?.messages ?? 0;
+      const pos = story?.pos ?? 0;
+      const neg = story?.neg ?? 0;
+      const love = monthlyLoveMap.get(mk) ?? 0;
+      const dominantName = Object.entries(userMsgs).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      let flavorText = '';
+      if (total === 0) {
+        flavorText = 'Silenzio radio. Non una sola parola.';
+      } else if (love > pos && love > neg) {
+        flavorText = `Un mese di fuoco 🔥 — ${dominantName} ha dominato con il cuore in mano.`;
+      } else if (neg > pos * 1.5) {
+        flavorText = `Turbolenze in arrivo. ${neg} parole cariche di caos.`;
+      } else if (pos > neg * 3) {
+        flavorText = `Vibrazioni altissime: ${pos} parole positive. Mese da incorniciare.`;
+      } else if (total > 1000) {
+        flavorText = `Mese esplosivo: ${total.toLocaleString('it-IT')} messaggi. La chat non dormiva mai.`;
+      } else if (total < 100) {
+        flavorText = 'Un mese tranquillo, poche parole ma buone.';
+      } else {
+        flavorText = `${total.toLocaleString('it-IT')} messaggi scambiati. ${dominantName} ha parlato di più.`;
+      }
+
+      return {
+        month: mk,
+        label,
+        totalMessages: total,
+        messagesPerUser: userMsgs,
+        topWords: topW,
+        topEmojis: topE,
+        topStickers: topSt,
+        sentiment: { pos, neg, love },
+        voiceNotes: media?.voice ?? 0,
+        photos: media?.photos ?? 0,
+        videos: media?.videos ?? 0,
+        peakDay,
+        avgMsgsPerDay,
+        flavorText,
+      };
+    });
+
   const global: GlobalStats = {
     totalMessages,
     totalLoveWords,
@@ -918,6 +1051,7 @@ export function runAnalytics(
     monthlyJourney,
     topWords,
     stickerTimeline: stickerTimlineEntries,
+    monthlySnapshots,
   };
 
   return {

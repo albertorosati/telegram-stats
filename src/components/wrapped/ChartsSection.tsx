@@ -24,7 +24,7 @@ import {
 
 import type { HeatmapCell, WrappedData } from '../../lib/analytics/types';
 import { SectionHeading } from './SectionHeading';
-import { DAY_LABELS, fadeUp, RADAR_LABELS } from './shared';
+import { DAY_LABELS, popIn, slideFromLeft, slideFromRight, RADAR_LABELS } from './shared';
 
 const tooltipStyle = {
   background: 'rgba(3,3,3,0.92)',
@@ -119,7 +119,7 @@ export function ChartsSection({ data }: ChartsSectionProps) {
 
   return (
     <section className='wrapped-stack'>
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp()}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...slideFromLeft(0)}>
         <div className='wrapped-panel-inner'>
           <SectionHeading eyebrow='Sulle montagne russe' title='Sulle montagne russe' description='' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
@@ -136,7 +136,7 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.03)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...slideFromRight(0.05)}>
         <div className='wrapped-panel-inner'>
           <SectionHeading eyebrow='Mood mensile' title='Mood mensile' description='' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
@@ -154,7 +154,7 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.06)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...popIn(0.05)}>
         <div className='wrapped-panel-inner'>
           <SectionHeading eyebrow='Il radar' title='Il radar' description='' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
@@ -172,7 +172,7 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.09)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...slideFromLeft(0.05)}>
         <div className='wrapped-panel-inner'>
           <SectionHeading eyebrow='Ora per ora' title='Ora per ora' description='' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
@@ -195,7 +195,7 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.12)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...slideFromRight(0.05)}>
         <div className='wrapped-panel-inner'>
           <SectionHeading eyebrow='La costanza' title='La costanza' description='' />
           <HeatmapGrid cells={data.global.heatmap} />

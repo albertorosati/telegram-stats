@@ -29,6 +29,33 @@ export function fadeUp(delay = 0, distance = 18) {
   } as const;
 }
 
+export function popIn(delay = 0) {
+  return {
+    initial: { opacity: 0, scale: 0.5, y: 30 },
+    whileInView: { opacity: 1, scale: 1, y: 0 },
+    viewport: { once: true, amount: 0.2 },
+    transition: { type: 'spring', stiffness: 260, damping: 20, delay },
+  } as const;
+}
+
+export function slideFromLeft(delay = 0) {
+  return {
+    initial: { opacity: 0, x: -60 },
+    whileInView: { opacity: 1, x: 0 },
+    viewport: { once: true, amount: 0.2 },
+    transition: { type: 'spring', stiffness: 180, damping: 22, delay },
+  } as const;
+}
+
+export function slideFromRight(delay = 0) {
+  return {
+    initial: { opacity: 0, x: 60 },
+    whileInView: { opacity: 1, x: 0 },
+    viewport: { once: true, amount: 0.2 },
+    transition: { type: 'spring', stiffness: 180, damping: 22, delay },
+  } as const;
+}
+
 export function formatDisplayDate(value: Date | string | null | undefined): string {
   if (!value) {
     return 'N/A';

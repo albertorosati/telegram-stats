@@ -1,59 +1,56 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Camera, Clapperboard, Link2, Mic } from 'lucide-react';
+import { Camera, Clapperboard, Crown, Link2, Mic } from 'lucide-react';
 
 import type { WrappedData } from '../../lib/analytics/types';
 import { CountUp } from './CountUp';
 import { SectionHeading } from './SectionHeading';
-import { fadeUp, formatDuration } from './shared';
+import { formatDuration, popIn, slideFromLeft, slideFromRight } from './shared';
 
 interface MediaChaosSectionProps {
   data: WrappedData;
 }
 
-const MEDIA_TILES = [
-  { key: 'voice', icon: Mic, emoji: '🎙️' },
-  { key: 'photos', icon: Camera, emoji: '📸' },
-  { key: 'videos', icon: Clapperboard, emoji: '🎥' },
-  { key: 'links', icon: Link2, emoji: '🔗' },
-] as const;
-
 export function MediaChaosSection({ data }: MediaChaosSectionProps) {
   const { mediaChaos } = data.global;
-  const voiceChampion = data.users.find((user) => user.name === mediaChaos.voiceChampion) ?? data.users[0];
-  const photoChampion = data.users.find((user) => user.name === mediaChaos.photoChampion) ?? data.users[0];
-  const videoChampion = data.users.find((user) => user.name === mediaChaos.videoChampion) ?? data.users[0];
-  const linkChampion = data.users.find((user) => user.name === mediaChaos.linkChampion) ?? data.users[0];
 
   const cards = [
     {
       title: 'Il Podcaster',
-      emoji: MEDIA_TILES[0].emoji,
-      icon: MEDIA_TILES[0].icon,
-      value: mediaChaos.totalVoiceNotes.toLocaleString('it-IT'),
-      detail: `Avete registrato l'equivalente di un audiolibro: ${formatDuration(mediaChaos.totalVoiceDuration)}. Più vocale di tutti: ${voiceChampion.name}.`,
+      emoji: '🎙️',
+      icon: Mic,
+      value: mediaChaos.totalVoiceNotes,
+      detail: `${formatDuration(mediaChaos.totalVoiceDuration)} di audio totali`,
+      champion: mediaChaos.voiceChampion,
+      color: '#b4ff00',
     },
     {
-      title: 'I Paparazzi',
-      emoji: MEDIA_TILES[1].emoji,
-      icon: MEDIA_TILES[1].icon,
-      value: mediaChaos.totalPhotos.toLocaleString('it-IT'),
-      detail: `${photoChampion.name} ha riempito il rullino più di tutti con ${photoChampion.imagesSent} foto.`,
+      title: 'Il Paparazzo',
+      emoji: '📸',
+      icon: Camera,
+      value: mediaChaos.totalPhotos,
+      detail: 'foto inviate nella chat',
+      champion: mediaChaos.photoChampion,
+      color: '#bd00ff',
     },
     {
-      title: 'I Registi',
-      emoji: MEDIA_TILES[2].emoji,
-      icon: MEDIA_TILES[2].icon,
-      value: mediaChaos.totalVideos.toLocaleString('it-IT'),
-      detail: `${videoChampion.name} firma la regia con ${videoChampion.videoFiles} video inviati.`,
+      title: 'Il Regista',
+      emoji: '🎥',
+      icon: Clapperboard,
+      value: mediaChaos.totalVideos,
+      detail: 'video nella timeline',
+      champion: mediaChaos.videoChampion,
+      color: '#00d1ff',
     },
     {
-      title: 'I Condivisi',
-      emoji: MEDIA_TILES[3].emoji,
-      icon: MEDIA_TILES[3].icon,
-      value: mediaChaos.totalLinks.toLocaleString('it-IT'),
-      detail: `${linkChampion.name} ha spinto il feed con ${linkChampion.linksShared} link, reel o TikTok inoltrati.`,
+      title: 'Il Curator',
+      emoji: '🔗',
+      icon: Link2,
+      value: mediaChaos.totalLinks,
+      detail: 'link condivisi',
+      champion: mediaChaos.linkChampion,
+      color: '#ff9d00',
     },
   ];
 
@@ -62,22 +59,33 @@ export function MediaChaosSection({ data }: MediaChaosSectionProps) {
       <div className='wrapped-panel-inner'>
         <SectionHeading
           eyebrow='Multimedia & caos'
-          title='La parte rumorosa, visiva e ingestibile della conversazione'
-          description='Messaggi vocali, foto, video e link meritano il loro palco. Qui il rumore di fondo diventa intrattenimento puro.'
+          title='Il palco del rumore'
+          description='Vocali, foto, video e link — il lato più rumoroso della conversazione.'
         />
 
-        <div className='wrapped-bento-grid'>
+        <div className='chaos-champion-grid'>
           {cards.map((card, index) => {
+            const slide = index % 2 === 0 ? slideFromLeft : slideFromRight;
             const Icon = card.icon;
             return (
-              <motion.article className='wrapped-chaos-card' key={card.title} {...fadeUp(index * 0.05)} whileHover={{ y: -6 }}>
-                <div className='wrapped-bento-head'>
-                  <span className='wrapped-bento-emoji'>{card.emoji}</span>
-                  <span className='wrapped-bento-icon'><Icon size={18} /></span>
+              <motion.article
+                className='chaos-champion-card'
+                key={card.title}
+                style={{ '--chaos-accent': card.color } as React.CSSProperties}
+                {...slide(index * 0.08)}
+                whileHover={{ y: -8, scale: 1.02 }}
+              >
+                <div className='chaos-champion-head'>
+                  <span className='chaos-champion-emoji'>{card.emoji}</span>
+                  <Icon size={20} className='chaos-champion-icon' />
                 </div>
-                <p className='wrapped-metric-label'>{card.title}</p>
-                <CountUp className='wrapped-chaos-value' value={Number(card.value.replaceAll('.', '').replace(',', '.')) || 0} />
-                <p className='wrapped-chaos-copy'>{card.detail}</p>
+                <p className='chaos-champion-title'>{card.title}</p>
+                <CountUp className='chaos-champion-value' value={card.value} />
+                <p className='wrapped-metric-detail'>{card.detail}</p>
+                <motion.div className='chaos-champion-badge' {...popIn(0.3 + index * 0.06)}>
+                  <Crown size={12} />
+                  <span>{card.champion}</span>
+                </motion.div>
               </motion.article>
             );
           })}

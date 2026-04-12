@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutDashboard, MessageSquare, Sticker, Swords, TrendingUp } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -12,6 +12,7 @@ import { CultureSection } from './CultureSection';
 import { AwardsSection } from './AwardsSection';
 import { ExportButton } from './ExportButton';
 import { HeroSection } from './HeroSection';
+import { ShareCard } from './ShareCard';
 import { MediaChaosSection } from './MediaChaosSection';
 import { OverviewSection } from './OverviewSection';
 import { StickerSection } from './StickerSection';
@@ -37,6 +38,16 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
   // Callback passed to ExportButton — returns the hidden export container
   const getExportContainer = useCallback(() => exportContainerRef.current, []);
 
+  // Mouse-tracking ambient glow
+  useEffect(() => {
+    function handleMove(e: MouseEvent) {
+      document.documentElement.style.setProperty('--mouse-x', `${e.clientX}px`);
+      document.documentElement.style.setProperty('--mouse-y', `${e.clientY}px`);
+    }
+    window.addEventListener('mousemove', handleMove, { passive: true });
+    return () => window.removeEventListener('mousemove', handleMove);
+  }, []);
+
   function renderTabContent() {
     if (activeTab === 'summary') {
       return (
@@ -44,6 +55,7 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
           <HeroSection data={data} />
           <OverviewSection headlineStats={headlineStats} insightCards={insightCards} />
           <MediaChaosSection data={data} />
+          <ShareCard data={data} />
         </>
       );
     }
@@ -119,16 +131,20 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
           <div className='wrapped-page wrapped-stack'>
             <section className='wrapped-tab-nav'>
               <div className='wrapped-tab-bar'>
-                {TABS.map((tab, i) => (
-                  <button
-                    className={`wrapped-tab-btn${i === 0 ? ' is-active' : ''}`}
-                    data-tab={tab.id}
-                    key={tab.id}
-                    type='button'
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                {TABS.map((tab, i) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      className={`wrapped-tab-btn${i === 0 ? ' is-active' : ''}`}
+                      data-tab={tab.id}
+                      key={tab.id}
+                      type='button'
+                    >
+                      <span className='wrapped-tab-btn-icon'><Icon size={16} /></span>
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
