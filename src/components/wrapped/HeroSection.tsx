@@ -25,41 +25,56 @@ export function HeroSection({ data }: HeroSectionProps) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ type: 'spring', stiffness: 160, damping: 20 }}
         >
-          <p className='wrapped-kicker'><Sparkles size={14} /> Il recap della chat</p>
+          <motion.p
+            className='wrapped-kicker'
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+          >
+            <Sparkles size={14} /> Il recap della chat
+          </motion.p>
           <h1 className='wrapped-title'>
             <motion.span
               className='wrapped-title-user-a'
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ type: 'spring', stiffness: 200, damping: 18, delay: 0.15 }}
             >
               {data.users[0].name}
             </motion.span>
-            <span className='wrapped-title-plus'> + </span>
+            <motion.span
+              className='wrapped-title-plus'
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.2 }}
+            >
+              {' + '}
+            </motion.span>
             <motion.span
               className='wrapped-title-user-b'
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ type: 'spring', stiffness: 200, damping: 18, delay: 0.25 }}
             >
               {data.users[1].name}
             </motion.span>
             <br />
             <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 180, damping: 16, delay: 0.35 }}
+              className='wrapped-title-wrapped'
+              initial={{ opacity: 0, scale: 0.7, filter: 'blur(12px)' }}
+              animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+              transition={{ type: 'spring', stiffness: 140, damping: 16, delay: 0.4 }}
             >
               Wrapped
             </motion.span>
           </h1>
           <motion.p
-            className='wrapped-subtitle'
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
+            className='wrapped-subtitle wrapped-hero-subtitle'
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.55 }}
           >
-            Questa chat è un piccolo universo fatto di testo, sticker, audio, caos e rituali notturni.
+            {data.global.totalMessages.toLocaleString('it-IT')} messaggi in {activeDays.toLocaleString('it-IT')} giorni. Ecco la vostra storia.
           </motion.p>
           <div className='wrapped-hero-pill-row'>
             {[
@@ -68,7 +83,7 @@ export function HeroSection({ data }: HeroSectionProps) {
               { icon: Zap, text: `${stickerPerDay.toLocaleString('it-IT', { maximumFractionDigits: 1 })} sticker/giorno` },
               { icon: Stars, text: topChatMood },
             ].map((pill, i) => (
-              <motion.span className='wrapped-hero-pill' key={pill.text} {...popIn(0.4 + i * 0.08)}>
+              <motion.span className='wrapped-hero-pill' key={pill.text} {...popIn(0.5 + i * 0.06)}>
                 <pill.icon size={15} /> {pill.text}
               </motion.span>
             ))}
@@ -76,17 +91,17 @@ export function HeroSection({ data }: HeroSectionProps) {
         </motion.div>
 
         <div className='wrapped-hero-side'>
-          <motion.div className='wrapped-mini-card wrapped-mini-card-accent' {...slideFromRight(0.1)}>
+          <motion.div className='wrapped-mini-card wrapped-mini-card-accent' {...slideFromRight(0.15)}>
             <p className='wrapped-mini-label'>🔥 Giorni passati a scriversi</p>
             <CountUp className='wrapped-mini-value' value={data.global.streak.maxStreak} />
             <p className='wrapped-mini-detail'>Giorni unici con almeno un messaggio</p>
           </motion.div>
-          <motion.div className='wrapped-mini-card' {...slideFromRight(0.2)}>
+          <motion.div className='wrapped-mini-card' {...slideFromRight(0.22)}>
             <p className='wrapped-mini-label'>💬 Avete fatto rumore con</p>
             <CountUp className='wrapped-mini-value' value={data.global.totalMessages} />
             <p className='wrapped-mini-detail'>{data.stickers.total.toLocaleString('it-IT')} sticker · {data.global.totalLoveWords} parole ad alta intensità</p>
           </motion.div>
-          <motion.div className='wrapped-mini-card wrapped-mini-card-secondary' {...slideFromRight(0.3)}>
+          <motion.div className='wrapped-mini-card wrapped-mini-card-secondary' {...slideFromRight(0.29)}>
             <p className='wrapped-mini-label'>⚡ Pressione emotiva</p>
             <CountUp className='wrapped-mini-value' prefix={emotionalDelta >= 0 ? '+' : ''} value={emotionalDelta} />
             <p className='wrapped-mini-detail'>saldo tra parole positive e negative</p>

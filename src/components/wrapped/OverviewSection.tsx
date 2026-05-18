@@ -16,11 +16,11 @@ export function OverviewSection({ headlineStats, insightCards }: OverviewSection
   return (
     <section className='wrapped-panel wrapped-scene'>
       <div className='wrapped-panel-inner'>
-        <SectionHeading eyebrow='I grandi numeri' title='I grandi numeri' description='' />
+        <SectionHeading eyebrow='I grandi numeri' title='I grandi numeri' description='Le metriche che definiscono la vostra conversazione.' />
 
         <div className='wrapped-highlight-list'>
           {headlineStats.map((stat, index) => (
-            <motion.article className='wrapped-bento-stat' key={stat.label} {...popIn(index * 0.08)} whileHover={{ y: -8, scale: 1.03 }}>
+            <motion.article className='wrapped-bento-stat' key={stat.label} {...popIn(index * 0.07)} whileHover={{ y: -8, scale: 1.03 }}>
               <div className='wrapped-bento-head'>
                 <span className='wrapped-bento-emoji'>{stat.emoji}</span>
               </div>
@@ -40,7 +40,7 @@ export function OverviewSection({ headlineStats, insightCards }: OverviewSection
             const slide = index % 2 === 0 ? slideFromLeft : slideFromRight;
             return (
               <motion.article
-                className='wrapped-story-card'
+                className={`wrapped-story-card${index === 0 ? ' wrapped-story-card-lead' : ''}`}
                 key={card.eyebrow}
                 style={{ '--wrapped-story-accent': card.accent } as React.CSSProperties}
                 {...slide(index * 0.06)}

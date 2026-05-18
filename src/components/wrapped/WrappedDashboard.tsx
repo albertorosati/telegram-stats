@@ -22,15 +22,15 @@ import { buildHeadlineStats, buildInsightCards } from './shared';
 type WrappedTab = 'summary' | 'challenges' | 'timeline' | 'language' | 'stickers';
 
 const TABS: Array<{ id: WrappedTab; label: string; icon: LucideIcon }> = [
+  { id: 'timeline', label: 'La Storia', icon: TrendingUp },
   { id: 'summary', label: 'Riassunto', icon: LayoutDashboard },
   { id: 'challenges', label: 'Le Sfide', icon: Swords },
-  { id: 'timeline', label: "L'Andamento", icon: TrendingUp },
   { id: 'language', label: 'Il Linguaggio', icon: MessageSquare },
   { id: 'stickers', label: 'Stickers', icon: Sticker },
 ];
 
 export function WrappedDashboard({ data }: { data: WrappedData }) {
-  const [activeTab, setActiveTab] = useState<WrappedTab>('summary');
+  const [activeTab, setActiveTab] = useState<WrappedTab>('timeline');
   const headlineStats = useMemo(() => buildHeadlineStats(data), [data]);
   const insightCards = useMemo(() => buildInsightCards(data), [data]);
   const exportContainerRef = useRef<HTMLDivElement>(null);
@@ -49,11 +49,16 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
   }, []);
 
   function renderTabContent() {
+    if (activeTab === 'timeline') {
+      return <TimelineSection data={data} />;
+    }
+
     if (activeTab === 'summary') {
       return (
         <>
           <HeroSection data={data} />
           <OverviewSection headlineStats={headlineStats} insightCards={insightCards} />
+          <ChartsSection data={data} />
           <MediaChaosSection data={data} />
           <ShareCard data={data} />
         </>
@@ -62,15 +67,6 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
 
     if (activeTab === 'challenges') {
       return <AwardsSection data={data} />;
-    }
-
-    if (activeTab === 'timeline') {
-      return (
-        <>
-          <ChartsSection data={data} />
-          <TimelineSection data={data} />
-        </>
-      );
     }
 
     if (activeTab === 'language') {
@@ -110,11 +106,12 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
 
         <AnimatePresence mode='wait'>
           <motion.div
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             className='wrapped-tab-content'
-            initial={{ opacity: 0, y: 14 }}
+            initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
+            exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
             key={activeTab}
-            transition={{ duration: 0.28, ease: 'easeOut' }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
             {renderTabContent()}
           </motion.div>
@@ -135,7 +132,7 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
                   const Icon = tab.icon;
                   return (
                     <button
-                      className={`wrapped-tab-btn${i === 0 ? ' is-active' : ''}`}
+                      className={`wrapped-tab-btn${tab.id === 'timeline' ? ' is-active' : ''}`}
                       data-tab={tab.id}
                       key={tab.id}
                       type='button'
@@ -149,17 +146,17 @@ export function WrappedDashboard({ data }: { data: WrappedData }) {
             </section>
 
             <div className='wrapped-tab-content'>
+              <div data-export-tab='timeline'>
+                <TimelineSection data={data} />
+              </div>
               <div data-export-tab='summary'>
                 <HeroSection data={data} />
                 <OverviewSection headlineStats={headlineStats} insightCards={insightCards} />
+                <ChartsSection data={data} />
                 <MediaChaosSection data={data} />
               </div>
               <div data-export-tab='challenges'>
                 <AwardsSection data={data} />
-              </div>
-              <div data-export-tab='timeline'>
-                <ChartsSection data={data} />
-                <TimelineSection data={data} />
               </div>
               <div data-export-tab='language'>
                 <CultureSection data={data} />
