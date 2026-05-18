@@ -23,7 +23,7 @@ export function MediaChaosSection({ data }: MediaChaosSectionProps) {
       value: mediaChaos.totalVoiceNotes,
       detail: `${formatDuration(mediaChaos.totalVoiceDuration)} di audio totali`,
       champion: mediaChaos.voiceChampion,
-      color: '#b4ff00',
+      color: '#2AABEE',
     },
     {
       title: 'Il Paparazzo',
@@ -32,7 +32,7 @@ export function MediaChaosSection({ data }: MediaChaosSectionProps) {
       value: mediaChaos.totalPhotos,
       detail: 'foto inviate nella chat',
       champion: mediaChaos.photoChampion,
-      color: '#bd00ff',
+      color: '#2EE6A6',
     },
     {
       title: 'Il Regista',
@@ -41,7 +41,7 @@ export function MediaChaosSection({ data }: MediaChaosSectionProps) {
       value: mediaChaos.totalVideos,
       detail: 'video nella timeline',
       champion: mediaChaos.videoChampion,
-      color: '#00d1ff',
+      color: '#64D2FF',
     },
     {
       title: 'Il Curator',
@@ -50,7 +50,7 @@ export function MediaChaosSection({ data }: MediaChaosSectionProps) {
       value: mediaChaos.totalLinks,
       detail: 'link condivisi',
       champion: mediaChaos.linkChampion,
-      color: '#ff9d00',
+      color: '#FFB020',
     },
   ];
 
@@ -73,7 +73,7 @@ export function MediaChaosSection({ data }: MediaChaosSectionProps) {
                 key={card.title}
                 style={{ '--chaos-accent': card.color } as React.CSSProperties}
                 {...slide(index * 0.08)}
-                whileHover={{ y: -8, scale: 1.02 }}
+                whileHover={{ y: -3 }}
               >
                 <div className='chaos-champion-head'>
                   <span className='chaos-champion-emoji'>{card.emoji}</span>

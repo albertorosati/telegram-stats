@@ -1,12 +1,10 @@
 'use client';
 
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -24,25 +22,36 @@ import {
 
 import type { HeatmapCell, WrappedData } from '../../lib/analytics/types';
 import { SectionHeading } from './SectionHeading';
-import { DAY_LABELS, fadeUp, popIn, slideFromLeft, slideFromRight, RADAR_LABELS } from './shared';
+import { DAY_LABELS, fadeUp, popIn, RADAR_LABELS } from './shared';
 
-const tooltipStyle: React.CSSProperties = {
-  background: 'rgba(3,3,3,0.96)',
-  border: '2px solid rgba(180,255,0,0.4)',
+const CHART_COLORS = {
+  bg: 'rgba(7,17,26,0.96)',
+  border: 'rgba(42,171,238,0.3)',
+  axis: '#A9C2D4',
+  grid: 'rgba(126,200,238,0.08)',
+  blue: '#2AABEE',
+  mint: '#2EE6A6',
+  cyan: '#64D2FF',
+  coral: '#FF6B4A',
+};
+
+const tooltipStyle: CSSProperties = {
+  background: CHART_COLORS.bg,
+  border: `1px solid ${CHART_COLORS.border}`,
   borderRadius: 14,
-  boxShadow: '0 8px 32px rgba(180,255,0,0.12), 0 2px 8px rgba(0,0,0,0.4)',
+  boxShadow: '0 18px 60px rgba(0,13,24,0.42)',
   padding: '12px 16px',
 };
 
-const axisTickStyle = { fill: '#a0a0b0', fontSize: 12, fontWeight: 500 };
-const gridStroke = 'rgba(255,255,255,0.04)';
+const axisTickStyle = { fill: CHART_COLORS.axis, fontSize: 12, fontWeight: 500 };
+const gridStroke = CHART_COLORS.grid;
 
 function heatmapColor(ratio: number): string {
-  if (ratio === 0) return 'rgba(255,255,255,0.025)';
-  if (ratio < 0.25) return `rgba(0,60,130,${0.3 + ratio * 1.6})`;
-  if (ratio < 0.5) return `rgba(180,255,0,${0.15 + (ratio - 0.25) * 2.4})`;
-  if (ratio < 0.75) return `rgba(180,255,0,${0.75 + (ratio - 0.5) * 0.6})`;
-  return `rgba(255,255,255,${0.7 + (ratio - 0.75) * 1.2})`;
+  if (ratio === 0) return 'rgba(126,200,238,0.045)';
+  if (ratio < 0.25) return `rgba(42,171,238,${0.22 + ratio * 1.6})`;
+  if (ratio < 0.5) return `rgba(100,210,255,${0.28 + (ratio - 0.25) * 2})`;
+  if (ratio < 0.75) return `rgba(46,230,166,${0.48 + (ratio - 0.5) * 1.6})`;
+  return `rgba(255,176,32,${0.62 + (ratio - 0.75) * 1.2})`;
 }
 
 function HeatmapGrid({ cells }: { cells: HeatmapCell[] }) {
@@ -83,10 +92,10 @@ function HeatmapGrid({ cells }: { cells: HeatmapCell[] }) {
         <span>Calmo</span>
         <div className='wrapped-heatmap-scale'>
           <span style={{ background: 'rgba(255,255,255,0.03)' }} />
-          <span style={{ background: 'rgba(0,60,130,0.6)' }} />
-          <span style={{ background: 'rgba(180,255,0,0.55)' }} />
-          <span style={{ background: 'rgba(180,255,0,0.85)' }} />
-          <span style={{ background: 'rgba(255,255,255,0.9)' }} />
+          <span style={{ background: 'rgba(42,171,238,0.45)' }} />
+          <span style={{ background: 'rgba(100,210,255,0.65)' }} />
+          <span style={{ background: 'rgba(46,230,166,0.78)' }} />
+          <span style={{ background: 'rgba(255,176,32,0.9)' }} />
         </div>
         <span>Picco</span>
       </div>
@@ -106,15 +115,6 @@ export function ChartsSection({ data }: ChartsSectionProps) {
     [data.global.dailyVolume],
   );
 
-  const sentimentData = useMemo(
-    () => data.global.monthlySentiment.map((entry) => ({
-      month: entry.label,
-      positive: entry.pos,
-      negative: -entry.neg,
-    })),
-    [data.global.monthlySentiment],
-  );
-
   const radarData = useMemo(
     () => RADAR_LABELS.map((label, index) => ({
       metric: label,
@@ -129,33 +129,55 @@ export function ChartsSection({ data }: ChartsSectionProps) {
     [data.global.hourlyWave],
   );
 
+  const emotionalClimate = useMemo(() => {
+    const totalPositive = data.users.reduce((sum, user) => sum + user.positivity, 0);
+    const totalNegative = data.users.reduce((sum, user) => sum + user.negativity, 0);
+    const totalLove = data.global.totalLoveWords;
+    const bands = [
+      {
+        label: 'Tenerezza',
+        value: totalLove,
+        detail: 'Parole che suonavano come vicinanza.',
+        color: CHART_COLORS.mint,
+      },
+      {
+        label: 'Luce',
+        value: totalPositive,
+        detail: 'Momenti in cui il tono si e fatto piu leggero.',
+        color: CHART_COLORS.cyan,
+      },
+      {
+        label: 'Attrito',
+        value: totalNegative,
+        detail: 'I passaggi in cui la chat si e fatta piu ruvida.',
+        color: CHART_COLORS.coral,
+      },
+    ];
+    const maxValue = Math.max(...bands.map((band) => band.value), 1);
+    const narrative = totalLove + totalPositive >= totalNegative
+      ? 'Guardata tutta insieme, questa conversazione lascia piu calore che attrito: anche quando accelera, tende a tornare verso la vicinanza.'
+      : 'Guardata tutta insieme, questa conversazione porta addosso piu attrito che tregua, ma continua comunque a non lasciare andare il filo.';
+
+    return { bands, maxValue, narrative };
+  }, [data]);
+
   return (
-    <section className='wrapped-stack'>
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0)}>
+    <section className='wrapped-chart-mosaic'>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide wrapped-chart-volume' {...fadeUp(0)}>
         <div className='wrapped-panel-inner'>
-          <SectionHeading eyebrow='Volume giornaliero' title='Sulle montagne russe' description='Il polso quotidiano della vostra conversazione.' />
+          <SectionHeading eyebrow='Il respiro dei giorni' title='I giorni che si alzano di voce' description='I picchi e i rientri del vostro ritmo quotidiano.' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
             <ResponsiveContainer height='100%' width='100%'>
               <LineChart data={lineData} margin={{ top: 12, right: 12, left: -10, bottom: 8 }}>
-                <defs>
-                  <filter id='glowLine'>
-                    <feGaussianBlur in='SourceGraphic' result='blur' stdDeviation='3' />
-                    <feMerge>
-                      <feMergeNode in='blur' />
-                      <feMergeNode in='SourceGraphic' />
-                    </feMerge>
-                  </filter>
-                </defs>
                 <CartesianGrid stroke={gridStroke} vertical={false} />
                 <XAxis dataKey='date' minTickGap={28} stroke='transparent' tick={axisTickStyle} />
                 <YAxis stroke='transparent' tick={axisTickStyle} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'rgba(180,255,0,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'rgba(42,171,238,0.35)', strokeWidth: 1, strokeDasharray: '4 4' }} />
                 <Line
-                  activeDot={{ r: 6, fill: '#b4ff00', stroke: '#030303', strokeWidth: 2, filter: 'drop-shadow(0 0 8px rgba(180,255,0,0.6))' }}
+                  activeDot={{ r: 6, fill: CHART_COLORS.blue, stroke: '#07111A', strokeWidth: 2 }}
                   dataKey='messages'
                   dot={false}
-                  filter='url(#glowLine)'
-                  stroke='#b4ff00'
+                  stroke={CHART_COLORS.blue}
                   strokeWidth={2.5}
                   type='monotone'
                   isAnimationActive
@@ -167,55 +189,48 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.08)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide wrapped-chart-sentiment' {...fadeUp(0.08)}>
         <div className='wrapped-panel-inner'>
-          <SectionHeading eyebrow='Sentimento' title='Mood mensile' description='Come oscilla il tono emotivo mese per mese.' />
-          <div className='wrapped-chart-frame wrapped-chart-clip'>
-            <ResponsiveContainer height='100%' width='100%'>
-              <BarChart data={sentimentData} margin={{ top: 12, right: 12, left: -10, bottom: 8 }}>
-                <defs>
-                  <linearGradient id='barGradientPos' x1='0' x2='0' y1='0' y2='1'>
-                    <stop offset='0%' stopColor='#b4ff00' stopOpacity={1} />
-                    <stop offset='100%' stopColor='#b4ff00' stopOpacity={0.6} />
-                  </linearGradient>
-                  <linearGradient id='barGradientNeg' x1='0' x2='0' y1='0' y2='1'>
-                    <stop offset='0%' stopColor='#ff4d7a' stopOpacity={0.7} />
-                    <stop offset='100%' stopColor='#ff4d7a' stopOpacity={1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={gridStroke} vertical={false} />
-                <XAxis dataKey='month' stroke='transparent' tick={axisTickStyle} />
-                <YAxis stroke='transparent' tick={axisTickStyle} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
-                <Bar dataKey='positive' fill='url(#barGradientPos)' radius={[6, 6, 0, 0]} isAnimationActive animationDuration={1200} />
-                <Bar dataKey='negative' fill='url(#barGradientNeg)' radius={[0, 0, 6, 6]} isAnimationActive animationDuration={1200} />
-              </BarChart>
-            </ResponsiveContainer>
+          <SectionHeading eyebrow='Clima emotivo' title='Quello che vi siete lasciati addosso' description='Il viaggio mese per mese resta in La Storia; qui rimane il tono complessivo della conversazione.' />
+          <div className='wrapped-emotion-climate'>
+            <p className='wrapped-emotion-climate-copy'>{emotionalClimate.narrative}</p>
+            <div className='wrapped-emotion-band-list'>
+              {emotionalClimate.bands.map((band, index) => (
+                <motion.div
+                  className='wrapped-emotion-band'
+                  key={band.label}
+                  style={{
+                    '--emotion-color': band.color,
+                    '--emotion-width': `${Math.max((band.value / emotionalClimate.maxValue) * 100, band.value > 0 ? 8 : 0)}%`,
+                  } as CSSProperties}
+                  {...fadeUp(0.12 + index * 0.06)}
+                >
+                  <div className='wrapped-emotion-band-head'>
+                    <span className='wrapped-emotion-band-label'>{band.label}</span>
+                    <span className='wrapped-emotion-band-value'>{band.value.toLocaleString('it-IT')}</span>
+                  </div>
+                  <div className='wrapped-emotion-band-track'>
+                    <span className='wrapped-emotion-band-fill' />
+                  </div>
+                  <p className='wrapped-emotion-band-detail'>{band.detail}</p>
+                </motion.div>
+              ))}
+            </div>
           </div>
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...popIn(0.05)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide wrapped-chart-radar' {...popIn(0.05)}>
         <div className='wrapped-panel-inner'>
-          <SectionHeading eyebrow='Personalità' title='Il radar' description='Cinque dimensioni a confronto.' />
+          <SectionHeading eyebrow='La vostra forma' title='Come vi muovete insieme' description='Cinque modi diversi di stare dentro la conversazione.' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
             <ResponsiveContainer height='100%' width='100%'>
               <RadarChart data={radarData} outerRadius='72%'>
-                <defs>
-                  <filter id='glowRadar1'>
-                    <feGaussianBlur in='SourceGraphic' result='blur' stdDeviation='2' />
-                    <feMerge><feMergeNode in='blur' /><feMergeNode in='SourceGraphic' /></feMerge>
-                  </filter>
-                  <filter id='glowRadar2'>
-                    <feGaussianBlur in='SourceGraphic' result='blur' stdDeviation='2' />
-                    <feMerge><feMergeNode in='blur' /><feMergeNode in='SourceGraphic' /></feMerge>
-                  </filter>
-                </defs>
-                <PolarGrid stroke='rgba(255,255,255,0.08)' />
-                <PolarAngleAxis dataKey='metric' tick={{ fill: '#d4d5dd', fontSize: 13, fontWeight: 600 }} />
+                <PolarGrid stroke={CHART_COLORS.grid} />
+                <PolarAngleAxis dataKey='metric' tick={{ fill: '#F7FBFF', fontSize: 13, fontWeight: 600 }} />
                 <PolarRadiusAxis angle={30} axisLine={false} domain={[0, 100]} tick={false} />
-                <Radar dataKey={userOne.name} fill='#b4ff00' fillOpacity={0.35} name={userOne.name} stroke='#b4ff00' strokeWidth={2} filter='url(#glowRadar1)' />
-                <Radar dataKey={userTwo.name} fill='#bd00ff' fillOpacity={0.28} name={userTwo.name} stroke='#bd00ff' strokeWidth={2} filter='url(#glowRadar2)' />
+                <Radar dataKey={userOne.name} fill={CHART_COLORS.blue} fillOpacity={0.26} name={userOne.name} stroke={CHART_COLORS.blue} strokeWidth={2} />
+                <Radar dataKey={userTwo.name} fill={CHART_COLORS.mint} fillOpacity={0.22} name={userTwo.name} stroke={CHART_COLORS.mint} strokeWidth={2} />
                 <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '0.82rem', fontWeight: 600 }} />
               </RadarChart>
             </ResponsiveContainer>
@@ -223,37 +238,32 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.1)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide wrapped-chart-hourly' {...fadeUp(0.1)}>
         <div className='wrapped-panel-inner'>
-          <SectionHeading eyebrow='Ritmo circadiano' title='Ora per ora' description='Quando siete più attivi durante la giornata.' />
+          <SectionHeading eyebrow='Le ore che tornano' title='Quando vi ritrovate' description='Le fasce del giorno in cui la chat torna a riaccendersi.' />
           <div className='wrapped-chart-frame wrapped-chart-clip'>
             <ResponsiveContainer height='100%' width='100%'>
               <AreaChart data={hourlyWaveData} margin={{ top: 12, right: 12, left: -10, bottom: 8 }}>
                 <defs>
                   <linearGradient id='hourlyWaveFill' x1='0' x2='0' y1='0' y2='1'>
-                    <stop offset='0%' stopColor='#00d1ff' stopOpacity={0.7} />
-                    <stop offset='100%' stopColor='#00d1ff' stopOpacity={0.05} />
+                    <stop offset='0%' stopColor={CHART_COLORS.cyan} stopOpacity={0.58} />
+                    <stop offset='100%' stopColor={CHART_COLORS.cyan} stopOpacity={0.04} />
                   </linearGradient>
-                  <filter id='glowArea'>
-                    <feGaussianBlur in='SourceGraphic' result='blur' stdDeviation='2.5' />
-                    <feMerge><feMergeNode in='blur' /><feMergeNode in='SourceGraphic' /></feMerge>
-                  </filter>
                 </defs>
                 <CartesianGrid stroke={gridStroke} vertical={false} />
                 <XAxis dataKey='hour' stroke='transparent' tick={axisTickStyle} />
                 <YAxis stroke='transparent' tick={axisTickStyle} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'rgba(0,209,255,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'rgba(100,210,255,0.35)', strokeWidth: 1, strokeDasharray: '4 4' }} />
                 <Area
                   dataKey='messages'
                   fill='url(#hourlyWaveFill)'
-                  stroke='#00d1ff'
+                  stroke={CHART_COLORS.cyan}
                   strokeWidth={2.5}
                   type='monotone'
-                  filter='url(#glowArea)'
                   isAnimationActive
                   animationDuration={1500}
                   dot={false}
-                  activeDot={{ r: 5, fill: '#00d1ff', stroke: '#030303', strokeWidth: 2, filter: 'drop-shadow(0 0 6px rgba(0,209,255,0.6))' }}
+                  activeDot={{ r: 5, fill: CHART_COLORS.cyan, stroke: '#07111A', strokeWidth: 2 }}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -261,9 +271,9 @@ export function ChartsSection({ data }: ChartsSectionProps) {
         </div>
       </motion.article>
 
-      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide' {...fadeUp(0.12)}>
+      <motion.article className='wrapped-panel wrapped-scene wrapped-chart-slide wrapped-chart-heatmap' {...fadeUp(0.12)}>
         <div className='wrapped-panel-inner'>
-          <SectionHeading eyebrow='Heatmap' title='La costanza' description='Ogni cella è un&apos;ora della settimana. Più è luminosa, più avete scritto.' />
+          <SectionHeading eyebrow='Settimana emotiva' title='Le ore che vi somigliano' description="Ogni cella e un'ora della settimana. Piu si illumina, piu siete tornati a scrivervi." />
           <HeatmapGrid cells={data.global.heatmap} />
         </div>
       </motion.article>

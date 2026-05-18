@@ -1,7 +1,7 @@
 import type { StickerUserStats, WrappedData } from '../../lib/analytics/types';
 
 export const DAY_LABELS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] as const;
-export const USER_COLORS = ['#b4ff00', '#bd00ff'] as const;
+export const USER_COLORS = ['#2AABEE', '#2EE6A6'] as const;
 export const RADAR_LABELS = ['Volume', 'Calore', 'Risate', 'Caos', 'Media'] as const;
 
 export interface HeadlineStat {
@@ -25,34 +25,43 @@ export function fadeUp(delay = 0, distance = 18) {
     initial: { opacity: 0, y: distance },
     whileInView: { opacity: 1, y: 0 },
     viewport: { once: true, amount: 0.16, margin: '0px 0px -120px 0px' },
-    transition: { duration: 0.48, delay, ease: 'easeOut' },
+    transition: { duration: 0.44, delay, ease: 'easeOut' },
   } as const;
 }
 
 export function popIn(delay = 0) {
   return {
-    initial: { opacity: 0, scale: 0.5, y: 30 },
+    initial: { opacity: 0, scale: 0.92, y: 20 },
     whileInView: { opacity: 1, scale: 1, y: 0 },
     viewport: { once: true, amount: 0.2 },
-    transition: { type: 'spring', stiffness: 260, damping: 20, delay },
+    transition: { type: 'spring', stiffness: 220, damping: 24, delay },
+  } as const;
+}
+
+export function fadeScale(delay = 0) {
+  return {
+    initial: { opacity: 0, scale: 0.95 },
+    whileInView: { opacity: 1, scale: 1 },
+    viewport: { once: true, amount: 0.18 },
+    transition: { duration: 0.4, delay, ease: 'easeOut' },
   } as const;
 }
 
 export function slideFromLeft(delay = 0) {
   return {
-    initial: { opacity: 0, x: -60 },
+    initial: { opacity: 0, x: -48 },
     whileInView: { opacity: 1, x: 0 },
     viewport: { once: true, amount: 0.2 },
-    transition: { type: 'spring', stiffness: 180, damping: 22, delay },
+    transition: { type: 'spring', stiffness: 200, damping: 24, delay },
   } as const;
 }
 
 export function slideFromRight(delay = 0) {
   return {
-    initial: { opacity: 0, x: 60 },
+    initial: { opacity: 0, x: 48 },
     whileInView: { opacity: 1, x: 0 },
     viewport: { once: true, amount: 0.2 },
-    transition: { type: 'spring', stiffness: 180, damping: 22, delay },
+    transition: { type: 'spring', stiffness: 200, damping: 24, delay },
   } as const;
 }
 
@@ -174,13 +183,13 @@ export function buildInsightCards(data: WrappedData): InsightCard[] {
       eyebrow: 'Creature sticker',
       title: `${stickerLeader.name} domina il canale meme`,
       detail: `${(data.stickers.byUser[stickerLeader.name]?.count ?? 0).toLocaleString('it-IT')} sticker sparati, di cui ${(data.stickers.byUser[stickerLeader.name]?.animatedCount ?? 0).toLocaleString('it-IT')} animati.`,
-      accent: '#00d1ff',
+      accent: '#64D2FF',
     },
     {
       eyebrow: 'Sincronia circadiana',
       title: `${nightSync}% di energia notturna condivisa`,
       detail: `${100 - weekendGap}% di allineamento nel weekend tra voi due.`,
-      accent: '#ff9d00',
+      accent: '#FFB020',
     },
   ];
 }

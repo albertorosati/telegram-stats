@@ -255,8 +255,10 @@ export interface MonthlySnapshot {
   topStickers: StickerPodiumEntry[];
   sentiment: { pos: number; neg: number; love: number };
   voiceNotes: number;
+  voiceDuration: number;
   photos: number;
   videos: number;
+  stickerCount: number;
   /** Day with most messages: "12 Mar" + count */
   peakDay: { label: string; count: number } | null;
   /** Average messages per active day in that month */

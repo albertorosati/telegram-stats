@@ -219,7 +219,7 @@ export function runAnalytics(
   const monthlyWordMap = new Map<string, Map<string, number>>();
   const monthlyEmojiMap = new Map<string, Map<string, number>>();
   const monthlyUserMsgMap = new Map<string, Map<string, number>>();
-  const monthlyMediaMap = new Map<string, { voice: number; photos: number; videos: number }>();
+  const monthlyMediaMap = new Map<string, { voice: number; voiceDuration: number; photos: number; videos: number; stickers: number }>();
   const monthlyLoveMap = new Map<string, number>();
   const monthlyDailyMap = new Map<string, Map<string, number>>(); // YYYY-MM → Map<YYYY-MM-DD, count>
 
@@ -292,7 +292,7 @@ export function runAnalytics(
 
     if (!monthlyWordMap.has(monthKey)) monthlyWordMap.set(monthKey, new Map());
     if (!monthlyEmojiMap.has(monthKey)) monthlyEmojiMap.set(monthKey, new Map());
-    if (!monthlyMediaMap.has(monthKey)) monthlyMediaMap.set(monthKey, { voice: 0, photos: 0, videos: 0 });
+    if (!monthlyMediaMap.has(monthKey)) monthlyMediaMap.set(monthKey, { voice: 0, voiceDuration: 0, photos: 0, videos: 0, stickers: 0 });
     if (!monthlyDailyMap.has(monthKey)) monthlyDailyMap.set(monthKey, new Map());
     const mdMap = monthlyDailyMap.get(monthKey)!;
     mdMap.set(dateKey, (mdMap.get(dateKey) ?? 0) + 1);
@@ -303,6 +303,7 @@ export function runAnalytics(
       u.voiceNotes++;
       u.voiceDuration += msg.duration_seconds ?? 0;
       monthlyMediaMap.get(monthKey)!.voice++;
+      monthlyMediaMap.get(monthKey)!.voiceDuration += msg.duration_seconds ?? 0;
     } else if (mType === 'video_file') {
       u.videoFiles++;
       u.videoDuration += msg.duration_seconds ?? 0;
@@ -414,6 +415,8 @@ export function runAnalytics(
         if (!stickerTimeline.has(monthKey)) stickerTimeline.set(monthKey, new Map());
         const tMap = stickerTimeline.get(monthKey)!;
         tMap.set(path, (tMap.get(path) ?? 0) + 1);
+        if (!monthlyMediaMap.has(monthKey)) monthlyMediaMap.set(monthKey, { voice: 0, voiceDuration: 0, photos: 0, videos: 0, stickers: 0 });
+        monthlyMediaMap.get(monthKey)!.stickers++;
       }
     }
   }
@@ -1029,8 +1032,10 @@ export function runAnalytics(
         topStickers: topSt,
         sentiment: { pos, neg, love },
         voiceNotes: media?.voice ?? 0,
+        voiceDuration: media?.voiceDuration ?? 0,
         photos: media?.photos ?? 0,
         videos: media?.videos ?? 0,
+        stickerCount: media?.stickers ?? 0,
         peakDay,
         avgMsgsPerDay,
         flavorText,

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Camera, Flame, Mic, TrendingUp } from 'lucide-react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useInView } from 'framer-motion';
 
 import type { MonthlySnapshot, WrappedData } from '../../lib/analytics/types';
 import { CountUp } from './CountUp';
 import { MediaAsset } from './MediaAsset';
-import { fadeUp, USER_COLORS } from './shared';
+import { fadeUp, formatDisplayDate, formatDuration, USER_COLORS } from './shared';
+import { MonthCardSkeleton } from './MonthCardSkeleton';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,23 +29,38 @@ interface NodeMeta {
 // ---------------------------------------------------------------------------
 
 function getChapterTitle(meta: NodeMeta, snap: MonthlySnapshot): string {
-  if (meta.isFirst) return "L'Inizio 🌱";
-  if (meta.isLast) return 'Adesso 📍';
+  if (meta.isFirst) return 'Da dove parte tutto';
+  if (meta.isLast) return 'Dove siete arrivati';
   const { tier, delta } = meta;
-  if (tier === 'silent') return 'La Pausa 💤';
-  if (tier === 'quiet') return 'La Grande Quiete 🌑';
-  if (tier === 'peak') return delta !== null && delta < 0 ? 'Il Picco Irripetibile ⚡' : 'Il Mese Record 🔥';
+  if (tier === 'silent') return 'Il mese fermo';
+  if (tier === 'quiet') return 'Il mese piu quieto';
+  if (tier === 'peak') return delta !== null && delta < 0 ? 'Il mese del culmine' : 'Il mese piu intenso';
   if (tier === 'high') {
-    if (delta !== null && delta > 30) return "L'Ascesa 📈";
-    if (delta !== null && delta < -20) return 'Il Declino 📉';
-    return 'Grandi Intese ✨';
+    if (delta !== null && delta > 30) return 'Il mese della ripresa';
+    if (delta !== null && delta < -20) return 'Quando il ritmo ha rallentato';
+    return 'Il mese pieno';
   }
-  // normal
-  if (delta !== null && delta > 30) return 'La Rinascita 🌱';
-  if (delta !== null && delta < -30) return 'Il Silenzio 🌧️';
-  if (snap.sentiment.love > snap.sentiment.pos && snap.sentiment.love > snap.sentiment.neg) return 'Cuori e Parole 💞';
-  if (snap.sentiment.neg > snap.sentiment.pos) return 'Acque Agitate 🌊';
-  return 'Giornate Normali ☁️';
+  if (delta !== null && delta > 30) return 'Il mese che riparte';
+  if (delta !== null && delta < -30) return 'Il mese in calo';
+  if (snap.sentiment.love > snap.sentiment.pos && snap.sentiment.love > snap.sentiment.neg) return 'Il mese piu vicino';
+  if (snap.sentiment.neg > snap.sentiment.pos) return 'Il mese piu teso';
+  return 'Il mese in equilibrio';
+}
+
+function getChapterSummary(snap: MonthlySnapshot, meta: NodeMeta, users: [string, string]): string {
+  if (snap.totalMessages === 0) {
+    return `Nel mese di ${snap.label} non risultano messaggi inviati.`;
+  }
+
+  const rankedUsers = Object.entries(snap.messagesPerUser).sort((left, right) => right[1] - left[1]);
+  const [dominantName = users[meta.dominantIdx], dominantCount = 0] = rankedUsers[0] ?? [];
+  const dominantPct = snap.totalMessages > 0 ? Math.round((dominantCount / snap.totalMessages) * 100) : 0;
+
+  if (!snap.peakDay) {
+    return `${dominantName} ha inviato ${dominantCount.toLocaleString('it-IT')} messaggi su ${snap.totalMessages.toLocaleString('it-IT')} (${dominantPct}%) nel mese di ${snap.label}.`;
+  }
+
+  return `${dominantName} ha inviato ${dominantCount.toLocaleString('it-IT')} messaggi su ${snap.totalMessages.toLocaleString('it-IT')} (${dominantPct}%). Il giorno con piu attivita e stato ${snap.peakDay.label} con ${snap.peakDay.count.toLocaleString('it-IT')} messaggi.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,31 +88,53 @@ function DeltaBadge({ delta }: { delta: number | null }) {
 // ---------------------------------------------------------------------------
 
 interface StoryCoverProps {
+  chatName: string;
+  archiveWindow: string;
+  openingLine: string;
+  peakChapterLabel: string;
+  peakChapterDetail: string;
+  sharedNightPulse: number;
   snapshots: MonthlySnapshot[];
   metas: NodeMeta[];
   users: [string, string];
 }
 
-function StoryCover({ snapshots, metas, users }: StoryCoverProps) {
+function StoryCover({
+  chatName,
+  archiveWindow,
+  openingLine,
+  peakChapterLabel,
+  peakChapterDetail,
+  sharedNightPulse,
+  snapshots,
+  metas,
+  users,
+}: StoryCoverProps) {
   const total = snapshots.reduce((s, m) => s + m.totalMessages, 0);
-  const first = snapshots[0];
-  const last = snapshots[snapshots.length - 1];
 
   return (
     <motion.div
-      className='tl-cover'
+      className='tl-cover tl-cover-editorial'
       initial={{ opacity: 0, y: 40 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
     >
-      <p className='tl-cover-eyebrow'>La vostra storia</p>
+      <div className='tl-cover-grid'>
+        <div className='tl-cover-copy'>
+          <p className='tl-cover-eyebrow'>La Storia</p>
+          <h1 className='tl-cover-headline'>{chatName}</h1>
+          <p className='tl-cover-manifesto'>{openingLine}</p>
+          <p className='tl-cover-range'>{archiveWindow}</p>
+        </div>
 
-      <div className='tl-cover-title'>
-        <span className='tl-cover-n'>{snapshots.length}</span>
-        <span className='tl-cover-cap'>Capitoli</span>
+        <div className='tl-cover-aside'>
+          <div className='tl-cover-mini'>
+            <p className='tl-cover-mini-label'>Il mese piu intenso</p>
+            <h2 className='tl-cover-mini-title'>{peakChapterLabel}</h2>
+            <p className='tl-cover-mini-copy'>{peakChapterDetail}</p>
+          </div>
+        </div>
       </div>
-
-      <p className='tl-cover-range'>{first.label} → {last.label}</p>
 
       <div className='tl-cover-users'>
         <span style={{ color: USER_COLORS[0] }}>{users[0]}</span>
@@ -105,7 +142,20 @@ function StoryCover({ snapshots, metas, users }: StoryCoverProps) {
         <span style={{ color: USER_COLORS[1] }}>{users[1]}</span>
       </div>
 
-      <p className='tl-cover-total'>{total.toLocaleString('it-IT')} messaggi totali</p>
+      <div className='tl-cover-stats'>
+        <div className='tl-cover-stat'>
+          <CountUp className='tl-cover-stat-value' value={total} />
+          <span className='tl-cover-stat-label'>messaggi custoditi</span>
+        </div>
+        <div className='tl-cover-stat'>
+          <CountUp className='tl-cover-stat-value' value={snapshots.length} />
+          <span className='tl-cover-stat-label'>capitoli da sfogliare</span>
+        </div>
+        <div className='tl-cover-stat'>
+          <span className='tl-cover-stat-value'>{sharedNightPulse}%</span>
+          <span className='tl-cover-stat-label'>energia notturna condivisa</span>
+        </div>
+      </div>
 
       {/* Sparkline — all months at a glance */}
       <div className='tl-sparkline' aria-hidden='true'>
@@ -136,22 +186,25 @@ interface ChapterNodeProps {
   meta: NodeMeta;
 }
 
-function ChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
+const ChapterNode = memo(function ChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
   const dominantColor = USER_COLORS[meta.dominantIdx];
   const padded = String(meta.ordinal).padStart(2, '0');
   const title = getChapterTitle(meta, snap);
+  const chapterSummary = getChapterSummary(snap, meta, users);
+  const rankedUsers = Object.entries(snap.messagesPerUser).sort((left, right) => right[1] - left[1]);
+  const [dominantName = users[meta.dominantIdx], dominantCount = 0] = rankedUsers[0] ?? [];
+  const dominantPct = snap.totalMessages > 0 ? Math.round((dominantCount / snap.totalMessages) * 100) : 0;
+  const voiceDurationLabel = formatDuration(snap.voiceDuration);
 
   return (
     <motion.div
-      className='tl-node'
-      data-chapter-ordinal={String(meta.ordinal)}
-      data-chapter-label={snap.label}
+      className={`tl-node ${index % 2 === 0 ? 'tl-node-left' : 'tl-node-right'}`}
+      style={{ '--tl-dominant-color': dominantColor } as React.CSSProperties}
       {...fadeUp(index * 0.04)}
     >
       <div
         className={`tl-chapter-card tl-card tl-card-${meta.tier}`}
         style={{
-          '--tl-dominant-color': dominantColor,
           '--vol-pct': `${meta.volPct}%`,
         } as React.CSSProperties}
       >
@@ -192,8 +245,40 @@ function ChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
           <DeltaBadge delta={meta.delta} />
         </div>
 
-        {/* Flavor text */}
-        {snap.flavorText && <p className='tl-flavor'>{snap.flavorText}</p>}
+        <p className='tl-flavor'>{chapterSummary}</p>
+
+        <div className='tl-chapter-facts'>
+          <div className='tl-chapter-fact'>
+            <span className='tl-chapter-fact-label'>Voce dominante</span>
+            <strong className='tl-chapter-fact-value'>{dominantName}</strong>
+            <span className='tl-chapter-fact-detail'>{dominantCount.toLocaleString('it-IT')} messaggi · {dominantPct}%</span>
+          </div>
+          <div className='tl-chapter-fact'>
+            <span className='tl-chapter-fact-label'>Giorno top</span>
+            <strong className='tl-chapter-fact-value'>{snap.peakDay?.label ?? 'N/D'}</strong>
+            <span className='tl-chapter-fact-detail'>{snap.peakDay ? `${snap.peakDay.count.toLocaleString('it-IT')} messaggi` : 'nessun picco rilevato'}</span>
+          </div>
+          <div className='tl-chapter-fact'>
+            <span className='tl-chapter-fact-label'>Vocali</span>
+            <strong className='tl-chapter-fact-value'>{snap.voiceNotes.toLocaleString('it-IT')}</strong>
+            <span className='tl-chapter-fact-detail'>{voiceDurationLabel} totali</span>
+          </div>
+          <div className='tl-chapter-fact'>
+            <span className='tl-chapter-fact-label'>Foto</span>
+            <strong className='tl-chapter-fact-value'>{snap.photos.toLocaleString('it-IT')}</strong>
+            <span className='tl-chapter-fact-detail'>immagini condivise</span>
+          </div>
+          <div className='tl-chapter-fact'>
+            <span className='tl-chapter-fact-label'>Video</span>
+            <strong className='tl-chapter-fact-value'>{snap.videos.toLocaleString('it-IT')}</strong>
+            <span className='tl-chapter-fact-detail'>video inviati</span>
+          </div>
+          <div className='tl-chapter-fact'>
+            <span className='tl-chapter-fact-label'>Sticker</span>
+            <strong className='tl-chapter-fact-value'>{snap.stickerCount.toLocaleString('it-IT')}</strong>
+            <span className='tl-chapter-fact-detail'>sticker usati nel mese</span>
+          </div>
+        </div>
 
         {/* User bars */}
         <div className='tl-users'>
@@ -217,6 +302,11 @@ function ChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
               </div>
             );
           })}
+        </div>
+
+        <div className='tl-bottom-head'>
+          <p className='tl-bottom-kicker'>Segni del mese</p>
+          {snap.avgMsgsPerDay > 0 ? <span className='tl-bottom-meta'>~{snap.avgMsgsPerDay.toLocaleString('it-IT')} messaggi al giorno</span> : null}
         </div>
 
         {/* Stickers + words + emojis */}
@@ -246,20 +336,32 @@ function ChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
             </div>
           )}
         </div>
-
-        {/* Context pills */}
-        <div className='tl-pills'>
-          {snap.peakDay && (
-            <span className='tl-pill'><Flame size={11} /> {snap.peakDay.label}: <strong>{snap.peakDay.count}</strong></span>
-          )}
-          {snap.avgMsgsPerDay > 0 && (
-            <span className='tl-pill'><TrendingUp size={11} /> ~{snap.avgMsgsPerDay}/g</span>
-          )}
-          {snap.voiceNotes > 0 && <span className='tl-pill'><Mic size={11} /> {snap.voiceNotes}</span>}
-          {snap.photos > 0 && <span className='tl-pill'><Camera size={11} /> {snap.photos}</span>}
-        </div>
       </div>
     </motion.div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Lazy chapter node — only renders full content when near viewport
+// ---------------------------------------------------------------------------
+
+function LazyChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: '200px 0px', once: false });
+
+  return (
+    <div
+      ref={ref}
+      data-chapter-ordinal={String(meta.ordinal)}
+      data-chapter-label={snap.label}
+      style={{ minHeight: 320 }}
+    >
+      {isInView ? (
+        <ChapterNode snap={snap} index={index} users={users} meta={meta} />
+      ) : (
+        <MonthCardSkeleton />
+      )}
+    </div>
   );
 }
 
@@ -267,7 +369,7 @@ function ChapterNode({ snap, index, users, meta }: ChapterNodeProps) {
 // Main section
 // ---------------------------------------------------------------------------
 
-export function TimelineSection({ data }: { data: WrappedData }) {
+export function TimelineSection({ data, disableLazy = false }: { data: WrappedData; disableLazy?: boolean }) {
   const snapshots = data.global.monthlySnapshots;
   const users: [string, string] = [data.users[0].name, data.users[1].name];
   const listRef = useRef<HTMLDivElement>(null);
@@ -302,7 +404,7 @@ export function TimelineSection({ data }: { data: WrappedData }) {
   useEffect(() => {
     if (!listRef.current || snapshots.length === 0) return;
     const nodes = Array.from(
-      listRef.current.querySelectorAll<HTMLElement>('.tl-node[data-chapter-ordinal]'),
+      listRef.current.querySelectorAll<HTMLElement>('[data-chapter-ordinal]'),
     );
     if (nodes.length === 0) return;
     const observer = new IntersectionObserver((entries) => {
@@ -319,35 +421,66 @@ export function TimelineSection({ data }: { data: WrappedData }) {
 
   if (snapshots.length === 0) return null;
 
+  const firstActiveDay = data.global.dailyVolume[0]?.date;
+  const lastActiveDay = data.global.dailyVolume[data.global.dailyVolume.length - 1]?.date;
   const activeMeta = metas[currentIdx] ?? metas[0];
   const activeSnap = snapshots[currentIdx] ?? snapshots[0];
   const progressPct = ((activeMeta.ordinal / snapshots.length) * 100).toFixed(1);
+  const peakChapter = snapshots.reduce((best, current) => (current.totalMessages > best.totalMessages ? current : best), snapshots[0]);
+  const sharedNightPulse = Math.round((data.users[0].nightPercentage + data.users[1].nightPercentage) / 2);
+  const archiveWindow = firstActiveDay && lastActiveDay
+    ? `${formatDisplayDate(firstActiveDay)} - ${formatDisplayDate(lastActiveDay)}`
+    : `${snapshots[0].label} - ${snapshots[snapshots.length - 1].label}`;
+  const totalNegative = data.users.reduce((sum, user) => sum + user.negativity, 0);
+  const openingLine = data.global.totalLoveWords >= totalNegative
+    ? 'Mese per mese trovi i picchi, i ritorni, i media condivisi e i dettagli che hanno dato forma alla conversazione.'
+    : 'Qui sotto la conversazione si ricompone mese per mese, con i giorni chiave e tutti i segnali che l\'hanno resa vostra.';
+  const peakChapterDetail = peakChapter.totalMessages > 0
+    ? `${peakChapter.totalMessages.toLocaleString('it-IT')} messaggi nel mese con il volume piu alto della chat.`
+    : 'Un archivio sottile, ma comunque pieno di tracce da rileggere.';
 
   return (
-    <section className='wrapped-panel wrapped-scene'>
-      <div className='wrapped-panel-inner'>
+    <section className='wrapped-timeline-stage'>
+      <StoryCover
+        archiveWindow={archiveWindow}
+        chatName={data.chatName}
+        metas={metas}
+        openingLine={openingLine}
+        peakChapterDetail={peakChapterDetail}
+        peakChapterLabel={peakChapter.label}
+        sharedNightPulse={sharedNightPulse}
+        snapshots={snapshots}
+        users={users}
+      />
 
-        <StoryCover metas={metas} snapshots={snapshots} users={users} />
-
-        {/* Sticky scroll progress indicator */}
-        {snapshots.length > 1 && (
-          <div className='tl-sticky' id='tl-sticky'>
-            <span className='tl-sticky-cap'>Cap. {activeMeta.ordinal}/{snapshots.length}</span>
-            <span className='tl-sticky-sep'>·</span>
-            <span className='tl-sticky-label'>{activeSnap.label}</span>
-            <div className='tl-sticky-prog'>
-              <div className='tl-sticky-prog-fill' style={{ width: `${progressPct}%` }} />
-            </div>
+      {/* Sticky scroll progress indicator */}
+      {snapshots.length > 1 && (
+        <div className='tl-sticky' id='tl-sticky'>
+          <span className='tl-sticky-cap'>Cap. {activeMeta.ordinal}/{snapshots.length}</span>
+          <span className='tl-sticky-sep'>·</span>
+          <span className='tl-sticky-label'>{activeSnap.label}</span>
+          <div className='tl-sticky-prog'>
+            <div className='tl-sticky-prog-fill' style={{ width: `${progressPct}%` }} />
           </div>
-        )}
-
-        {/* Chapter list */}
-        <div className='tl-timeline tl-chapter-list' id='tl-chapter-list' ref={listRef}>
-          {snapshots.map((snap, index) => (
-            <ChapterNode key={snap.month} index={index} meta={metas[index]} snap={snap} users={users} />
-          ))}
         </div>
+      )}
 
+      {/* Chapter list */}
+      <div className='tl-timeline tl-chapter-list' id='tl-chapter-list' ref={listRef}>
+        {snapshots.map((snap, index) =>
+          disableLazy ? (
+            <div
+              key={snap.month}
+              data-chapter-ordinal={String(metas[index].ordinal)}
+              data-chapter-label={snap.label}
+              style={{ minHeight: 320 }}
+            >
+              <ChapterNode snap={snap} index={index} users={users} meta={metas[index]} />
+            </div>
+          ) : (
+            <LazyChapterNode key={snap.month} index={index} meta={metas[index]} snap={snap} users={users} />
+          )
+        )}
       </div>
     </section>
   );

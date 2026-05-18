@@ -13,15 +13,37 @@ interface AwardsSectionProps {
 }
 
 export function AwardsSection({ data }: AwardsSectionProps) {
+  const winCounts = data.users.map((user) => ({
+    name: user.name,
+    wins: data.global.awards.filter((award) => award.winnerName === user.name).length,
+  }));
+  const totalAwards = data.global.awards.length;
+
   return (
     <section className='wrapped-stack'>
-      <section className='wrapped-panel wrapped-scene'>
-        <div className='wrapped-panel-inner'>
+      <section className='awards-summary-board'>
+        <div className='wrapped-panel wrapped-scene awards-summary-card awards-summary-card-primary'>
           <SectionHeading eyebrow='Testa a testa' title='Chi domina cosa?' description='Ogni sfida è un duello. Chi ne esce vincitore?' />
+          <div className='awards-summary-totals'>
+            {winCounts.map((entry, index) => (
+              <div className='awards-summary-metric' key={entry.name}>
+                <span className='awards-summary-name' style={{ color: USER_COLORS[index] }}>{entry.name}</span>
+                <CountUp className='awards-summary-value' value={entry.wins} />
+                <span className='awards-summary-label'>award vinti</span>
+              </div>
+            ))}
+          </div>
         </div>
+
+        <motion.div className='wrapped-panel wrapped-scene awards-summary-card awards-summary-card-meta' {...fadeUp(0.06)}>
+          <p className='wrapped-metric-label'>Sfide disponibili</p>
+          <CountUp className='wrapped-metric-value' value={totalAwards} />
+          <p className='wrapped-metric-detail'>ogni award misura un comportamento diverso della chat</p>
+        </motion.div>
       </section>
 
-      {data.global.awards.map((award, index) => {
+      <div className='awards-grid'>
+        {data.global.awards.map((award, index) => {
         const total = award.winnerScore + award.loserScore || 1;
         const winnerPct = Math.round((award.winnerScore / total) * 100);
         const loserPct = 100 - winnerPct;
@@ -96,7 +118,8 @@ export function AwardsSection({ data }: AwardsSectionProps) {
             </div>
           </motion.section>
         );
-      })}
+        })}
+      </div>
     </section>
   );
 }

@@ -123,36 +123,6 @@ export function StickerSection({ data }: StickerSectionProps) {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          MONTHLY EVOLUTION — Top 3 stickers per month
-          ══════════════════════════════════════════════════════════════════════ */}
-      {data.global.monthlySnapshots.length > 0 && data.global.monthlySnapshots.some(s => s.topStickers.length > 0) && (
-        <section className='wrapped-panel wrapped-scene'>
-          <div className='wrapped-panel-inner'>
-            <SectionHeading eyebrow='Evoluzione sticker' title='Come cambiano i vostri sticker' description='Mese per mese, gli sticker più usati si evolvono — ecco la loro storia.' />
-            <div className='sticker-evolution-grid'>
-              {data.global.monthlySnapshots.filter(s => s.topStickers.length > 0).map((snap, mIdx) => (
-                <motion.div
-                  className='sticker-evolution-month'
-                  key={snap.month}
-                  {...(mIdx % 2 === 0 ? slideFromLeft(mIdx * 0.04) : slideFromRight(mIdx * 0.04))}
-                >
-                  <span className='sticker-evolution-label'>{snap.label}</span>
-                  <div className='sticker-evolution-row'>
-                    {snap.topStickers.map((s, i) => (
-                      <motion.div className='sticker-evolution-item' key={s.path} {...popIn(0.15 + i * 0.06)} whileHover={{ scale: 1.15, rotate: i % 2 === 0 ? 4 : -4 }}>
-                        <MediaAsset alt={`${snap.label} #${i + 1}`} kind={s.isAnimated ? 'video' : 'image'} url={s.blobUrl} />
-                        <span className='sticker-evolution-count'>{s.count}x</span>
-                      </motion.div>
-                    ))}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════════
           HOLY TRINITY — Podium with gold/silver/bronze glow
           ══════════════════════════════════════════════════════════════════════ */}
       {holyTrinity.length > 0 && (
